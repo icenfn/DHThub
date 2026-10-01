@@ -1,0 +1,194 @@
+[
+  {
+    "id": "10004",
+    "name": "磁力猫",
+    "info": "多引擎磁力种子搜索",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://clm44.vip/[keyword]&sort=rele&p=[page]",
+      "headers": {
+        "Referer": "https://clm44.vip/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": "#Search_list_wrapper li",
+      "title": "a.SearchListTitle_result_title",
+      "date": "div.Search_list_info",
+      "size": "",
+      "url": { "sel": "a.SearchListTitle_result_title", "attr": "href" },
+      "magnet": { "sel": "a#down-url", "attr": "href" }
+    }
+  },
+  {
+    "id": "10006",
+    "name": "btfox",
+    "info": "BT 种子搜索",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://btfox19.top/[keyword]&sort=time&page=[page]",
+      "headers": {
+        "Referer": "https://btfox19.top/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": "div.item",
+      "title": "div.thread_check div a",
+      "date": "div.threadlist_note",
+      "size": "",
+      "url": { "sel": "div.thread_check div a", "attr": "href" },
+      "magnet": { "sel": "a#down-url", "attr": "href" }
+    }
+  },
+  {
+    "id": "10007",
+    "name": "ØMagnet",
+    "info": "Torrent Sharing Easy",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://0mag.me/[keyword]&p=[page]",
+      "headers": {
+        "Referer": "https://0mag.me/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": "table tbody tr",
+      "title": "td a",
+      "date": "",
+      "size": "td.td-size",
+      "url": { "sel": "td a", "attr": "href" },
+      "magnet": { "sel": "input#input-magnet", "attr": "value" }
+    }
+  },
+  {
+    "id": "10008",
+    "name": "种子吧",
+    "info": "种子搜索引擎",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://zzb07.top/[keyword]&sort=rel&page=[page]",
+      "headers": {
+        "Referer": "https://zzb07.top/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": ".search-list li",
+      "title": { "sel": "h4 a", "attr": "title" },
+      "date": ".search-info span:nth-child(1)",
+      "size": ".search-info span:nth-child(2)",
+      "url": { "sel": "h4 a", "attr": "href" },
+      "magnet": { "sel": "a#down-url", "attr": "href" }
+    }
+  },
+  {
+    "id": "10014",
+    "name": "简单动漫",
+    "info": "动漫资源搜索",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://so.acg17.cc/s/index.php?searchInput=[keyword]&showLength=20&showMore=more",
+      "headers": {
+        "Referer": "https://so.acg17.cc/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": "tbody#data_list tr",
+      "title": "td:nth-child(3) a",
+      "date": "td:nth-child(1)",
+      "size": "td:nth-child(4)",
+      "url": "",
+      "magnet": { "sel": "td:nth-child(3) a", "attr": "href" }
+    }
+  },
+  {
+    "id": "10016",
+    "name": "torrentkitty",
+    "info": "磁力搜索",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://www.torrentkitty.ink/search/[keyword]/[page]",
+      "headers": {
+        "Referer": "https://www.torrentkitty.ink/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": "table#archiveResult tbody tr",
+      "title": "td:nth-child(1)",
+      "date": "td:nth-child(3)",
+      "size": "td:nth-child(2)",
+      "url": "",
+      "magnet": { "sel": "td:nth-child(4) a:nth-child(2)", "attr": "href" }
+    }
+  },
+  {
+    "id": "10024",
+    "name": "动漫花园",
+    "info": "动漫资源聚合",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://dmhy.anoneko.com/topics/list/page/[page]?keyword=[keyword]",
+      "headers": {
+        "Referer": "https://dmhy.anoneko.com/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": "table.tablesorter tbody tr",
+      "title": "td.title a",
+      "date": "dd.info",
+      "size": "",
+      "url": { "sel": "td.title a", "attr": "href" },
+      "magnet": { "sel": "a#magnet2", "attr": "href" }
+    }
+  },
+  {
+    "id": "10027",
+    "name": "磁力多",
+    "info": "磁力资源搜索",
+    "state": true,
+    "time": "2026-10-01",
+    "update_time": "2026-10-01",
+    "request": {
+      "method": "GET",
+      "search_url": "https://doc2.htmcdn.com:39988/search?word=[keyword]&sort=&page=[page]",
+      "headers": {
+        "Referer": "https://doc2.htmcdn.com:39988/"
+      },
+      "timeout_ms": 12000
+    },
+    "expression_model": {
+      "group": ".tbox .ssbox",
+      "title": ".title h3 a",
+      "date": ".sbar span:nth-child(2) b",
+      "size": ".sbar span:nth-child(3) b",
+      "url": "",
+      "magnet": { "sel": ".title h3 a", "attr": "href" }
+    }
+  }
+]

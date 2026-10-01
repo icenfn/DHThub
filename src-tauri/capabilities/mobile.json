@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-default",
+  "description": "DHThub 移动端权限（Android）",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": [
+    "core:default",
+    "store:default",
+    "dialog:default",
+    "clipboard-manager:allow-write-text",
+    "opener:default",
+    "http:default",
+    "shell:allow-open",
+    "log:default"
+  ]
+}
