@@ -139,6 +139,12 @@ jobs:
       - name: 初始化 Android 工程
         run: npx tauri android init
 
+      - name: 覆盖 Android 图标为自定义图标（tauri init 使用模板默认图标，需用 icons/android 覆盖）
+        run: |
+          cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
+          echo "图标覆盖完成："
+          find src-tauri/gen/android/app/src/main/res/ -name "ic_launcher*" | sort
+
       - name: 注入 APK 安装权限（更新检测自动安装用）
         run: |
           MANIFEST=src-tauri/gen/android/app/src/main/AndroidManifest.xml
