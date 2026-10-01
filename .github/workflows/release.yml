@@ -179,31 +179,28 @@ jobs:
           python3 - <<'PYEOF'
           p = 'src-tauri/gen/android/app/build.gradle.kts'
           s = open(p, encoding='utf-8').read()
-
           marker = '    buildTypes {'
-          signing_block = '''    signingConfigs {
-        if (rootProject.file("keystore.properties").exists()) {
-            val keystoreProperties = Properties().apply {
-                load(rootProject.file("keystore.properties").inputStream())
-            }
-            create("release") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("storePassword")
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
-            }
-        }
-    }
-    buildTypes {'''
-          assert marker in s, "marker buildTypes not found"
+          signing_block = '    signingConfigs {\n' \
+              '        if (rootProject.file("keystore.properties").exists()) {\n' \
+              '            val keystoreProperties = Properties().apply {\n' \
+              '                load(rootProject.file("keystore.properties").inputStream())\n' \
+              '            }\n' \
+              '            create("release") {\n' \
+              '                storeFile = file(keystoreProperties.getProperty("storeFile"))\n' \
+              '                storePassword = keystoreProperties.getProperty("storePassword")\n' \
+              '                keyAlias = keystoreProperties.getProperty("keyAlias")\n' \
+              '                keyPassword = keystoreProperties.getProperty("keyPassword")\n' \
+              '            }\n' \
+              '        }\n' \
+              '    }\n' \
+              '    buildTypes {'
+          assert marker in s, 'marker buildTypes not found'
           s = s.replace(marker, signing_block, 1)
-
           rel = '        getByName("release") {'
-          assert rel in s, "release buildType not found"
+          assert rel in s, 'release buildType not found'
           s = s.replace(rel, rel + '\n            signingConfig = signingConfigs.findByName("release")', 1)
-
           open(p, 'w', encoding='utf-8').write(s)
-          print("gradle signing wired OK")
+          print('gradle signing wired OK')
           PYEOF
 
       - name: 构建 APK（split-per-abi，四架构）
