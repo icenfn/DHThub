@@ -5,14 +5,12 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { settings } from '../stores/settings'
 import { useSitesStore } from '../stores/sites'
 import { invoke, isTauri } from '../lib/tauri'
-import { speedTestAll, pickFastest, MIRROR_PROBE_URL } from '../lib/mirrors'
+import { speedTestMirror, pickFastest, MIRROR_PROBE_URL } from '../lib/mirrors'
 import UpdateDialog from '../components/UpdateDialog.vue'
 import type { GithubMirror, MirrorSpeedResult } from '../types'
 
 const sitesStore = useSitesStore()
 const themeMode = ref<'system' | 'light' | 'dark'>('system')
-const hotWordInput = ref('')
-const hotWords = ref<string[]>([])
 const toast = ref('')
 const showToast = ref(false)
 const updateOpen = ref(false)
@@ -25,12 +23,14 @@ const mirrorMode = ref<'manual' | 'auto'>('manual')
 const selectedMirrorId = ref('direct')
 const speeds = ref<Record<string, MirrorSpeedResult>>({})
 const testing = ref(false)
+const testingIds = ref<Set<string>>(new Set())
 const addMirrorDialog = ref(false)
 const newMirrorName = ref('')
 const newMirrorBase = ref('')
 
 interface MirrorRow extends GithubMirror {
   speedChip: { color: string; icon: string; text: string } | null
+  testing: boolean
 }
 
 const mirrorRows = computed<MirrorRow[]>(() =>
@@ -46,7 +46,7 @@ const mirrorRows = computed<MirrorRow[]>(() =>
             text: `${r.latency}ms`,
           }
     }
-    return { ...m, speedChip: chip }
+    return { ...m, speedChip: chip, testing: testingIds.value.has(m.id) }
   }),
 )
 
@@ -66,29 +66,6 @@ function notice(msg: string) {
 async function saveTheme(v: 'system' | 'light' | 'dark') {
   themeMode.value = v
   await settings.set('theme', v)
-}
-
-// ---------- 热词 ----------
-async function addHotWord() {
-  const w = hotWordInput.value.trim()
-  if (!w) return
-  const list = [...hotWords.value.filter((x) => x !== w), w]
-  hotWords.value = list
-  hotWordInput.value = ''
-  await settings.set('hotWords', list)
-}
-
-async function removeHotWord(w: string) {
-  const list = hotWords.value.filter((x) => x !== w)
-  hotWords.value = list
-  await settings.set('hotWords', list)
-}
-
-async function restoreDefaultHotWords() {
-  const { DEFAULT_HOT_WORDS } = await import('../stores/settings')
-  hotWords.value = [...DEFAULT_HOT_WORDS]
-  await settings.set('hotWords', hotWords.value)
-  notice('已恢复默认热词')
 }
 
 // ---------- 数据 ----------
@@ -118,6 +95,7 @@ async function onMirrorModeChange(v: 'manual' | 'auto') {
   mirrorMode.value = v
   await settings.setMirrorMode(v)
   if (v === 'auto') {
+    notice('正在测速所有镜像并自动选择最快…')
     await runSpeedTest(true)
   } else {
     notice('已切换为手动选择')
@@ -131,15 +109,29 @@ async function selectMirror(m: GithubMirror) {
   notice(`已切换：${m.name}`)
 }
 
+/** 并发测速全部镜像，单项完成立即刷新延迟显示 */
 async function runSpeedTest(autoPick = false) {
+  if (testing.value) return
   testing.value = true
+  speeds.value = {}
+  testingIds.value = new Set(mirrors.value.map((m) => m.id))
   try {
-    const results = await speedTestAll(mirrors.value)
-    const map: Record<string, MirrorSpeedResult> = {}
-    results.forEach((r) => (map[r.id] = r))
-    speeds.value = map
+    const results = await Promise.all(
+      mirrors.value.map(async (m) => {
+        const r = await speedTestMirror(m)
+        // 单项完成立即更新对应行
+        speeds.value = { ...speeds.value, [r.id]: r }
+        const next = new Set(testingIds.value)
+        next.delete(r.id)
+        testingIds.value = next
+        return r
+      }),
+    )
+    const list = mirrors.value
+      .map((m) => speeds.value[m.id])
+      .filter((r): r is MirrorSpeedResult => !!r)
     if (autoPick || mirrorMode.value === 'auto') {
-      const best = pickFastest(results)
+      const best = pickFastest(list)
       if (best) {
         selectedMirrorId.value = best.id
         await settings.selectMirror(best.id)
@@ -148,10 +140,12 @@ async function runSpeedTest(autoPick = false) {
         notice('测速完成，但所有镜像均不可用')
       }
     } else {
-      notice('测速完成')
+      const ok = list.filter((r) => r.latency != null).length
+      notice(`测速完成：${ok}/${list.length} 个镜像可用`)
     }
   } finally {
     testing.value = false
+    testingIds.value = new Set()
   }
 }
 
@@ -220,7 +214,6 @@ async function doImportSettings() {
     const count = await settings.importJson(text)
     // 重新同步页面状态
     themeMode.value = settings.get('theme')
-    hotWords.value = [...settings.get('hotWords')]
     await refreshMirrors()
     notice(`设置导入成功（${count} 项）`)
   } catch (e) {
@@ -233,7 +226,6 @@ async function doImportSettings() {
 onMounted(async () => {
   await settings.ready()
   themeMode.value = settings.get('theme')
-  hotWords.value = [...settings.get('hotWords')]
   await refreshMirrors()
   await sitesStore.load().catch(() => undefined)
 })
@@ -247,7 +239,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
     <div class="d-flex align-center mt-2 mb-4 flex-wrap ga-2">
       <div class="mr-auto">
         <div class="text-h6 font-weight-bold">设置</div>
-        <div class="text-caption text-medium-emphasis">外观、GitHub 镜像、数据与热词管理</div>
+        <div class="text-caption text-medium-emphasis">外观、GitHub 镜像与数据管理</div>
       </div>
       <v-btn
         color="primary"
@@ -370,8 +362,16 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           </v-list-item-subtitle>
           <template #append>
             <div class="d-flex align-center ga-2">
+              <v-progress-circular
+                v-if="row.testing"
+                indeterminate
+                size="18"
+                width="2"
+                color="primary"
+                class="mr-1"
+              />
               <v-chip
-                v-if="row.speedChip"
+                v-else-if="row.speedChip"
                 size="x-small"
                 :color="row.speedChip.color"
                 :variant="row.speedChip.icon === 'mdi-close' ? 'tonal' : 'flat'"
@@ -398,33 +398,6 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           添加自定义镜像
         </v-btn>
         <div class="text-caption text-medium-emphasis mt-1">测速探针：{{ MIRROR_PROBE_URL }}</div>
-      </v-card-text>
-    </v-card>
-
-    <!-- 热门推荐热词 -->
-    <v-card class="mb-4">
-      <v-card-item>
-        <template #prepend>
-          <v-avatar color="tertiary-container" variant="flat" rounded="lg">
-            <v-icon icon="mdi-fire" color="on-tertiary-container" />
-          </v-avatar>
-        </template>
-        <v-card-title class="text-subtitle-1 font-weight-bold">热门推荐热词</v-card-title>
-        <v-card-subtitle class="text-caption">首页「热门推荐」与「换一换」的数据来源，本地保存</v-card-subtitle>
-      </v-card-item>
-      <v-card-text>
-        <div class="d-flex ga-2 mb-3">
-          <v-text-field v-model="hotWordInput" label="添加热词" hide-details density="comfortable" @keyup.enter="addHotWord" />
-          <v-btn color="primary" variant="flat" @click="addHotWord">添加</v-btn>
-        </div>
-        <div class="d-flex flex-wrap ga-2">
-          <v-chip v-for="(w, i) in hotWords" :key="i" closable @click:close="removeHotWord(w)">
-            {{ w }}
-          </v-chip>
-        </div>
-        <v-btn variant="text" color="secondary" size="small" class="mt-2" @click="restoreDefaultHotWords">
-          恢复默认热词
-        </v-btn>
       </v-card-text>
     </v-card>
 

@@ -15,11 +15,11 @@ const showAgreement = ref(false)
 const mq = ref<MediaQueryList | null>(null)
 const updateOpen = ref(false)
 
+// 主导航：搜索 / 站点 / 历史（设置页为独立页面，经顶栏图标路由跳转）
 const navItems = [
   { to: '/', icon: 'mdi-magnify', label: '搜索' },
   { to: '/sites', icon: 'mdi-antenna', label: '站点' },
   { to: '/history', icon: 'mdi-history', label: '历史' },
-  { to: '/settings', icon: 'mdi-cog-outline', label: '设置' },
 ]
 
 const isAgreementPage = computed(() => route.name === 'agreement' || route.name === 'disclaimer')
@@ -159,7 +159,7 @@ function go(to: string) {
         />
       </v-list>
       <template #append>
-        <div class="pa-4 text-caption text-medium-emphasis">v0.2.0 · GitHub 发布</div>
+        <div class="pa-4 text-caption text-medium-emphasis">v0.2.1 · GitHub 发布</div>
       </template>
     </v-navigation-drawer>
 

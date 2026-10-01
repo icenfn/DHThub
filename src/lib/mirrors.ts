@@ -15,6 +15,10 @@ export const BUILTIN_MIRRORS: GithubMirror[] = [
 export const MIRROR_PROBE_URL =
   'https://raw.githubusercontent.com/icenfn/DHThub/main/sites/default.json'
 
+/** 热门推荐热词总表（仓库托管，经镜像抓取 + 本地缓存） */
+export const HOTWORDS_URL =
+  'https://raw.githubusercontent.com/icenfn/DHThub/main/hotwords.json'
+
 /** 将原始 GitHub URL 套用镜像前缀；镜像为空或未选择时返回原 URL */
 export function mirrorUrl(mirror: GithubMirror | undefined | null, url: string): string {
   const base = (mirror?.base ?? '').trim()

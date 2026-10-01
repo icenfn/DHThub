@@ -228,7 +228,7 @@ fn extract_field(doc: &Html, root: &ElementRef<'_>, spec: Option<&FieldSpec>) ->
 pub async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
     let resp = client
         .get(url)
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(12))
         .header("User-Agent", format!("DHThub/{env} (+https://github.com/icenfn/DHThub)", env = env!("CARGO_PKG_VERSION")))
         .send()
         .await
@@ -244,7 +244,7 @@ pub async fn measure_latency(client: &reqwest::Client, url: &str) -> Result<u64,
     let started = std::time::Instant::now();
     let resp = client
         .get(url)
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(8))
         .header("User-Agent", format!("DHThub/{env} (+https://github.com/icenfn/DHThub)", env = env!("CARGO_PKG_VERSION")))
         .send()
         .await

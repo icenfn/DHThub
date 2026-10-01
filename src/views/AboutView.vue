@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isTauri } from '../lib/tauri'
 import UpdateDialog from '../components/UpdateDialog.vue'
 
-const version = ref('0.2.0')
+const version = ref('0.2.1')
 const updateOpen = ref(false)
 
 onMounted(async () => {

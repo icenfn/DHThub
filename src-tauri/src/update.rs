@@ -31,7 +31,7 @@ pub async fn check_update(
     let url = apply_mirror(mirror_base, GITHUB_API_URL);
     let resp = client
         .get(&url)
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(12))
         .header("User-Agent", format!("DHThub/{env} (+https://github.com/icenfn/DHThub)", env = env!("CARGO_PKG_VERSION")))
         .header("Accept", "application/vnd.github+json")
         .send()

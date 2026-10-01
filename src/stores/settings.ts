@@ -11,6 +11,7 @@ export type MirrorMode = 'manual' | 'auto'
 export interface SettingsData {
   theme: ThemeMode
   subscribeUrl: string
+  /** 热门推荐热词（仓库 hotwords.json 抓取后的本地缓存） */
   hotWords: string[]
   agreedVersion: string | null
   searchHistory: string[]
@@ -25,6 +26,7 @@ export interface SettingsData {
 export const DEFAULT_SUBSCRIBE_URL =
   'https://raw.githubusercontent.com/icenfn/DHThub/main/sites/default.json'
 
+/** 热词初始缓存（仓库抓取失败时的兜底） */
 export const DEFAULT_HOT_WORDS = [
   '复仇者联盟4',
   '流浪地球2',

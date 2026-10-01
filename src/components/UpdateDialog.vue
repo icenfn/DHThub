@@ -36,7 +36,6 @@ async function check() {
     checking.value = false
   }
 }
-
 function releasePage(): string {
   return `https://github.com/icenfn/DHThub/releases/latest`
 }
@@ -120,7 +119,9 @@ onBeforeUnmount(() => unlisten?.())
       <v-card-text>
         <div v-if="checking" class="text-center pa-6">
           <v-progress-circular indeterminate color="primary" />
-          <div class="mt-3 text-medium-emphasis">正在检查 GitHub Releases…</div>
+          <div class="mt-3 text-medium-emphasis">
+            正在检查更新（经 {{ settings.getSelectedMirror().name }}）…
+          </div>
         </div>
 
         <v-alert v-else-if="error && !info" type="error" variant="tonal">{{ error }}</v-alert>
