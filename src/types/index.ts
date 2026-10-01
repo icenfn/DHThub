@@ -76,3 +76,29 @@ export interface UpdateInfo {
 }
 
 export type HistoryKind = 'magnet' | 'copy' | 'browse'
+
+/** GitHub 镜像配置：base 为前缀代理地址，空字符串 = 官方直连 */
+export interface GithubMirror {
+  id: string
+  name: string
+  base: string
+  /** 是否内置镜像（内置不可删除） */
+  builtin?: boolean
+}
+
+/** 镜像测速结果 */
+export interface MirrorSpeedResult {
+  id: string
+  name: string
+  base: string
+  latency: number | null
+  error: string | null
+}
+
+/** 设置导出文件结构 */
+export interface SettingsExportFile {
+  app: 'DHThub'
+  schemaVersion: 1
+  exportedAt: string
+  settings: Record<string, unknown>
+}

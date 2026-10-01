@@ -26,7 +26,10 @@ impl AppState {
             .unwrap_or_else(|_| std::path::PathBuf::from("."));
         Self {
             http: reqwest::Client::builder()
-                .user_agent("DHThub/0.1 (+https://github.com/icenfn/DHThub)")
+                .user_agent(format!(
+                    "DHThub/{env} (+https://github.com/icenfn/DHThub)",
+                    env = env!("CARGO_PKG_VERSION")
+                ))
                 .build()
                 .expect("构建 HTTP 客户端失败"),
             sites: SiteStore::new(app_data.clone()).await,
@@ -114,6 +117,12 @@ async fn fetch_text(state: tauri::State<'_, AppState>, url: String) -> Result<St
     search::fetch_text(&state.http, &url).await
 }
 
+/// GitHub 镜像测速：请求目标 URL，返回耗时（毫秒）
+#[tauri::command]
+async fn test_mirror_speed(state: tauri::State<'_, AppState>, url: String) -> Result<u64, String> {
+    search::measure_latency(&state.http, &url).await
+}
+
 // ---------- 搜索 ----------
 
 #[tauri::command]
@@ -183,8 +192,16 @@ async fn clear_all_history(state: tauri::State<'_, AppState>) -> Result<(), Stri
 // ---------- 更新 ----------
 
 #[tauri::command]
-async fn check_update(state: tauri::State<'_, AppState>) -> Result<UpdateInfo, String> {
-    update::check_update(&state.http, "0.1.1").await
+async fn check_update(
+    state: tauri::State<'_, AppState>,
+    mirror_base: Option<String>,
+) -> Result<UpdateInfo, String> {
+    update::check_update(
+        &state.http,
+        env!("CARGO_PKG_VERSION"),
+        mirror_base.as_deref(),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -192,8 +209,9 @@ async fn download_apk(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     url: String,
+    mirror_base: Option<String>,
 ) -> Result<String, String> {
-    update::download_apk(app, &state.http, &url).await
+    update::download_apk(app, &state.http, &url, mirror_base.as_deref()).await
 }
 
 // ---------- 应用启动 ----------
@@ -227,6 +245,7 @@ pub fn run() {
             import_sites,
             reset_sites,
             fetch_text,
+            test_mirror_speed,
             search_sites,
             add_history,
             get_history,

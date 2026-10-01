@@ -5,6 +5,7 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useSitesStore } from '../stores/sites'
 import { settings, DEFAULT_SUBSCRIBE_URL } from '../stores/settings'
 import { invoke, isTauri } from '../lib/tauri'
+import { mirrorUrl } from '../lib/mirrors'
 import type { SiteConfig } from '../types'
 
 const sitesStore = useSitesStore()
@@ -98,8 +99,11 @@ async function doSubscribe() {
     await settings.set('subscribeUrl', url)
     subscribing.value = true
     try {
-      const sites = await sitesStore.subscribe(url)
-      notice(`订阅成功：${sites.length} 个搜索源`)
+      // 拉取时套用选中的 GitHub 镜像前缀，存储仍为规范地址
+      const mirror = settings.getSelectedMirror()
+      const realUrl = mirrorUrl(mirror, url)
+      const sites = await sitesStore.subscribe(realUrl)
+      notice(`订阅成功：${sites.length} 个搜索源${mirror.base ? `（经 ${mirror.name}）` : ''}`)
     } finally {
       subscribing.value = false
     }
@@ -242,6 +246,7 @@ onMounted(async () => {
         <v-card-title class="text-subtitle-1 font-weight-bold">订阅在线搜索仓库</v-card-title>
         <v-card-subtitle class="text-caption">
           输入任意 GitHub Raw / JSON 地址，拉取站点列表（仓库内置：sites/default.json）
+          <span class="ml-1 text-medium-emphasis">镜像：{{ settings.getSelectedMirror().name }}</span>
           <span v-if="sitesStore.subscribedAt" class="ml-1 text-medium-emphasis">上次更新：{{ sitesStore.subscribedAt }}</span>
         </v-card-subtitle>
       </v-card-item>

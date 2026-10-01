@@ -135,35 +135,8 @@ onMounted(async () => {
 
 <template>
   <div class="px-4 px-sm-8 py-4 mx-auto" style="max-width: 1040px">
-    <!-- 头部 -->
-    <div class="d-flex align-center ga-3 mt-2 mb-4">
-      <div class="d-flex d-sm-none align-center">
-        <v-icon icon="mdi-flash-outline" color="primary" size="26" />
-        <span class="text-h6 font-weight-bold ml-1">DHThub</span>
-      </div>
-      <v-spacer />
-      <v-btn
-        variant="tonal"
-        color="primary"
-        prepend-icon="mdi-antenna"
-        size="small"
-        @click="$router.push('/sites')"
-      >
-        站点
-      </v-btn>
-      <v-btn
-        variant="tonal"
-        color="secondary"
-        prepend-icon="mdi-history"
-        size="small"
-        @click="$router.push('/history')"
-      >
-        历史
-      </v-btn>
-    </div>
-
     <!-- 搜索区 -->
-    <v-sheet rounded="xl" class="pa-4 pa-sm-6" elevation="1" color="surface">
+    <v-sheet rounded="xl" class="pa-4 pa-sm-6" elevation="1" color="surface" border="sm">
       <div class="text-h6 font-weight-bold mb-3">多源磁力搜索</div>
       <div class="d-flex flex-column flex-sm-row ga-2">
         <v-text-field

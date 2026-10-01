@@ -7,19 +7,32 @@ use std::time::Instant;
 use tauri::{Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 
-/// DHThub 发布仓库（可在设置页通过环境变量/配置覆盖）
-pub const REPO: &str = "icenfn/DHThub";
+/// GitHub Releases API 地址
+const GITHUB_API_URL: &str = "https://api.github.com/repos/icenfn/DHThub/releases/latest";
 
-/// 检查最新版本
+/// 将 GitHub 原始 URL 应用到镜像前缀（直连时返回原 URL）
+pub fn apply_mirror(mirror_base: Option<&str>, url: &str) -> String {
+    match mirror_base.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(base) => format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            url.trim_start_matches('/')
+        ),
+        None => url.to_string(),
+    }
+}
+
+/// 检查最新版本（mirror_base 为选中的 GitHub 镜像前缀，可为空 = 直连）
 pub async fn check_update(
     client: &reqwest::Client,
     current_version: &str,
+    mirror_base: Option<&str>,
 ) -> Result<UpdateInfo, String> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+    let url = apply_mirror(mirror_base, GITHUB_API_URL);
     let resp = client
         .get(&url)
         .timeout(std::time::Duration::from_secs(20))
-        .header("User-Agent", "DHThub/0.1 (+https://github.com/icenfn/DHThub)")
+        .header("User-Agent", format!("DHThub/{env} (+https://github.com/icenfn/DHThub)", env = env!("CARGO_PKG_VERSION")))
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
@@ -130,11 +143,12 @@ fn version_gt(new: &str, cur: &str) -> bool {
     false
 }
 
-/// 下载 APK 到应用缓存目录，期间通过事件上报进度
+/// 下载 APK 到应用缓存目录，期间通过事件上报进度（mirror_base 可为空 = 直连）
 pub async fn download_apk(
     app: tauri::AppHandle,
     client: &reqwest::Client,
     url: &str,
+    mirror_base: Option<&str>,
 ) -> Result<String, String> {
     let dir = app
         .path()
@@ -149,11 +163,12 @@ pub async fn download_apk(
         .filter(|n| n.ends_with(".apk"))
         .unwrap_or("DHThub.apk");
     let dest = dir.join(file_name);
+    let real_url = apply_mirror(mirror_base, url);
 
     let resp = client
-        .get(url)
+        .get(real_url)
         .timeout(std::time::Duration::from_secs(120))
-        .header("User-Agent", "DHThub/0.1 (+https://github.com/icenfn/DHThub)")
+        .header("User-Agent", format!("DHThub/{env} (+https://github.com/icenfn/DHThub)", env = env!("CARGO_PKG_VERSION")))
         .send()
         .await
         .map_err(|e| format!("下载请求失败: {e}"))?;

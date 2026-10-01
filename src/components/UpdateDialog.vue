@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isAndroid, isTauri } from '../lib/tauri'
+import { settings } from '../stores/settings'
 import type { UpdateInfo } from '../types'
 
 const model = defineModel<boolean>({ required: true })
@@ -27,7 +28,8 @@ async function check() {
   error.value = ''
   info.value = null
   try {
-    info.value = await invoke<UpdateInfo>('check_update')
+    const mirror = settings.getSelectedMirror()
+    info.value = await invoke<UpdateInfo>('check_update', { mirrorBase: mirror.base })
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -62,7 +64,8 @@ async function startDownload() {
         progress.value = e.payload
       },
     )
-    const path = await invoke<string>('download_apk', { url: apk.url })
+    const mirror = settings.getSelectedMirror()
+    const path = await invoke<string>('download_apk', { url: apk.url, mirrorBase: mirror.base })
     if (isAndroid()) {
       await invoke('install_apk', { path })
       error.value = ''

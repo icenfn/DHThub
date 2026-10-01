@@ -14,6 +14,8 @@
 
 ## 功能清单（已实现）
 
+> **v0.2.0**：UI 全面升级至 Vuetify 4 + Material Design 3（完整 MD3 色彩 token、顶栏布局）；新增独立设置页的 **GitHub 镜像** 配置（内置 3 个、可自定义、一键测速、手动/自动选最快），用于检查更新与订阅源拉取；新增**设置导出/导入**（JSON 备份恢复）。
+
 ### A 核心
 | 编号 | 功能 | 说明 |
 |---|---|---|
@@ -23,8 +25,8 @@
 | A4 | 磁力操作 | 复制、打开（系统处理）、分享、详情弹窗 |
 | A5 | 搜索历史+热词 | 本地 20 条历史、热词「换一换」、清空 |
 | A6 | 三类历史页 | 磁力/复制/浏览记录，去重、上限 500、清空 |
-| A7 | GitHub 更新检测 | Release 检查、桌面自动更新、Android APK 下载安装、启动静默检查 |
-| A8 | 设置页 | 主题、热词管理、数据清除、订阅源、关于 |
+| A7 | GitHub 更新检测 | Release 检查（支持镜像）、桌面自动更新、Android APK 下载安装（支持镜像）、启动静默检查 |
+| A8 | 设置页 | MD3 界面：主题、GitHub 镜像（内置 3 个/自定义/测速/手动或自动选最快）、设置导出导入（JSON）、热词管理、数据清除、订阅源、关于 |
 | A9 | Actions 三端发布 | tag v* 触发，Linux/Windows/Android 自动打包 + Release |
 
 ### B 已选
@@ -91,7 +93,7 @@ cargo tauri android build --apk --split-per-abi
 
 1. 推送 tag 触发发布：
    ```bash
-   git tag v0.1.0 && git push origin v0.1.0
+   git tag v0.2.0 && git push origin v0.2.0
    ```
 2. 或在 Actions 页手动触发 `workflow_dispatch`。
 3. 产物自动上传 GitHub Release：deb / AppImage / rpm / nsis / msi / APK（arm64/v7a/x86/x86_64）。

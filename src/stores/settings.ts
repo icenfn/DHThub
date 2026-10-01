@@ -1,13 +1,25 @@
 // 设置与轻量数据的持久化：Tauri 下用 plugin-store，浏览器预览用 localStorage 降级
 
+import { reactive } from 'vue'
 import { isTauri } from '../lib/tauri'
+import { BUILTIN_MIRRORS } from '../lib/mirrors'
+import type { GithubMirror, SettingsExportFile } from '../types'
+
+export type ThemeMode = 'system' | 'light' | 'dark'
+export type MirrorMode = 'manual' | 'auto'
 
 export interface SettingsData {
-  theme: 'system' | 'light' | 'dark'
+  theme: ThemeMode
   subscribeUrl: string
   hotWords: string[]
   agreedVersion: string | null
   searchHistory: string[]
+  /** GitHub 镜像列表（内置 + 自定义） */
+  githubMirrors: GithubMirror[]
+  /** 镜像选择方式：手动 / 自动测速选最快 */
+  githubMirrorMode: MirrorMode
+  /** 当前选中镜像 id */
+  githubMirrorId: string
 }
 
 export const DEFAULT_SUBSCRIBE_URL =
@@ -34,10 +46,17 @@ const DEFAULTS: SettingsData = {
   hotWords: DEFAULT_HOT_WORDS,
   agreedVersion: null,
   searchHistory: [],
+  githubMirrors: BUILTIN_MIRRORS.map((m) => ({ ...m })),
+  githubMirrorMode: 'manual',
+  githubMirrorId: 'direct',
 }
 
 class SettingsStore {
-  private data: SettingsData = { ...DEFAULTS }
+  /** 响应式数据：主题/镜像等跨页面即时生效 */
+  private data: SettingsData = reactive({
+    ...DEFAULTS,
+    githubMirrors: DEFAULTS.githubMirrors.map((m) => ({ ...m })),
+  })
   private loaded = false
   private file?: Awaited<ReturnType<typeof import('@tauri-apps/plugin-store').load>>
 
@@ -48,7 +67,7 @@ class SettingsStore {
       const raw = localStorage.getItem('dhthub:settings')
       if (raw) {
         try {
-          this.data = { ...DEFAULTS, ...JSON.parse(raw) }
+          Object.assign(this.data, this.merge({ ...DEFAULTS, ...JSON.parse(raw) }))
         } catch {
           /* ignore */
         }
@@ -62,11 +81,66 @@ class SettingsStore {
       const { load } = await import('@tauri-apps/plugin-store')
       this.file = await load('settings.json', { autoSave: false })
       const raw = await this.file.get<SettingsData>('settings')
-      this.data = { ...DEFAULTS, ...(raw ?? {}) }
+      Object.assign(this.data, this.merge({ ...DEFAULTS, ...(raw ?? {}) }))
     } catch {
       /* ignore */
     }
     this.loaded = true
+  }
+
+  /** 合并外部数据：保证结构合法、内置镜像存在且选中 id 有效 */
+  private merge(incoming: Partial<SettingsData>): SettingsData {
+    const merged: SettingsData = {
+      ...DEFAULTS,
+      ...incoming,
+      githubMirrors: DEFAULTS.githubMirrors.map((m) => ({ ...m })),
+      searchHistory: Array.isArray(incoming.searchHistory)
+        ? incoming.searchHistory.filter((x): x is string => typeof x === 'string').slice(0, 20)
+        : [],
+      hotWords: Array.isArray(incoming.hotWords)
+        ? incoming.hotWords.filter((x): x is string => typeof x === 'string').slice(0, 50)
+        : [],
+    }
+    // 主题与订阅地址合法性
+    if (merged.theme !== 'system' && merged.theme !== 'light' && merged.theme !== 'dark') {
+      merged.theme = 'system'
+    }
+    if (typeof merged.subscribeUrl !== 'string') {
+      merged.subscribeUrl = DEFAULT_SUBSCRIBE_URL
+    }
+    if (merged.githubMirrorMode !== 'manual' && merged.githubMirrorMode !== 'auto') {
+      merged.githubMirrorMode = 'manual'
+    }
+    // 镜像：内置 + 合法自定义，去重
+    const seen = new Set<string>()
+    merged.githubMirrors.forEach((m) => {
+      if (
+        m &&
+        typeof m.id === 'string' &&
+        typeof m.name === 'string' &&
+        typeof m.base === 'string' &&
+        !seen.has(m.id)
+      ) {
+        seen.add(m.id)
+      }
+    })
+    const custom = (Array.isArray(incoming.githubMirrors) ? incoming.githubMirrors : [])
+      .filter(
+        (m): m is GithubMirror =>
+          !!m &&
+          typeof m.id === 'string' &&
+          typeof m.name === 'string' &&
+          typeof m.base === 'string' &&
+          !m.builtin &&
+          !seen.has(m.id) &&
+          /^https?:\/\//i.test(m.base),
+      )
+      .map((m) => ({ ...m }))
+    merged.githubMirrors = [...merged.githubMirrors, ...custom]
+    if (!merged.githubMirrors.some((m) => m.id === merged.githubMirrorId)) {
+      merged.githubMirrorId = merged.githubMirrors[0]?.id ?? 'direct'
+    }
+    return merged
   }
 
   private async persist() {
@@ -89,6 +163,11 @@ class SettingsStore {
     return this.data[key]
   }
 
+  /** 当前完整设置快照（导出用） */
+  snapshot(): SettingsData {
+    return JSON.parse(JSON.stringify(this.data))
+  }
+
   async set<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
     this.data[key] = value
     await this.persist()
@@ -106,6 +185,103 @@ class SettingsStore {
   async clearSearchHistory() {
     this.data.searchHistory = []
     await this.persist()
+  }
+
+  // ---------- GitHub 镜像 ----------
+
+  getMirrors(): GithubMirror[] {
+    return this.data.githubMirrors
+  }
+
+  /** 当前选中的镜像（默认直连） */
+  getSelectedMirror(): GithubMirror {
+    return (
+      this.data.githubMirrors.find((m) => m.id === this.data.githubMirrorId) ??
+      this.data.githubMirrors[0] ??
+      BUILTIN_MIRRORS[0]
+    )
+  }
+
+  async selectMirror(id: string) {
+    if (!this.data.githubMirrors.some((m) => m.id === id)) return
+    this.data.githubMirrorId = id
+    await this.persist()
+  }
+
+  async setMirrorMode(mode: MirrorMode) {
+    this.data.githubMirrorMode = mode
+    await this.persist()
+  }
+
+  /** 添加自定义镜像（返回新镜像，name/base 已校验） */
+  async addMirror(name: string, base: string): Promise<GithubMirror> {
+    const n = name.trim()
+    if (!n) throw new Error('镜像名称不能为空')
+    if (!/^https?:\/\/[^\s]+$/i.test(base.trim())) {
+      throw new Error('镜像地址必须以 http(s):// 开头')
+    }
+    const normalized = base.trim().endsWith('/') ? base.trim() : `${base.trim()}/`
+    if (this.data.githubMirrors.some((m) => m.base === normalized)) {
+      throw new Error('该镜像地址已存在')
+    }
+    const mirror: GithubMirror = {
+      id: `m${Date.now().toString(36)}`,
+      name: n,
+      base: normalized,
+    }
+    this.data.githubMirrors = [...this.data.githubMirrors, mirror]
+    await this.persist()
+    return mirror
+  }
+
+  /** 删除自定义镜像（内置不可删）；若删除的是当前选中项则回退直连 */
+  async removeMirror(id: string) {
+    const target = this.data.githubMirrors.find((m) => m.id === id)
+    if (!target || target.builtin) return
+    this.data.githubMirrors = this.data.githubMirrors.filter((m) => m.id !== id)
+    if (this.data.githubMirrorId === id) {
+      this.data.githubMirrorId = 'direct'
+    }
+    await this.persist()
+  }
+
+  // ---------- 设置导出 / 导入 ----------
+
+  /** 导出全部设置为 JSON 文本（含镜像配置） */
+  async exportJson(): Promise<string> {
+    const file: SettingsExportFile = {
+      app: 'DHThub',
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      settings: this.snapshot() as unknown as Record<string, unknown>,
+    }
+    return JSON.stringify(file, null, 2)
+  }
+
+  /** 导入设置 JSON：合并合法字段，返回导入的字段数 */
+  async importJson(json: string): Promise<number> {
+    let parsed: SettingsExportFile
+    try {
+      parsed = JSON.parse(json)
+    } catch {
+      throw new Error('文件不是合法的 JSON')
+    }
+    if (parsed?.app !== 'DHThub') {
+      throw new Error('不是 DHThub 设置文件（缺少 app 标识）')
+    }
+    const incoming = (parsed.settings ?? {}) as Record<string, unknown>
+    const merged = this.merge({ ...this.data, ...incoming } as Partial<SettingsData>)
+    // 统计实际导入的字段数
+    let imported = 0
+    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorMode', 'githubMirrorId'] as const).forEach(
+      (k) => {
+        if (incoming[k] !== undefined) imported++
+      },
+    )
+    if (Array.isArray(incoming.githubMirrors)) imported++
+    Object.assign(this.data, merged)
+    await this.persist()
+    return imported
   }
 }
 

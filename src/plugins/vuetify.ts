@@ -3,32 +3,142 @@ import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 
-// DHThub 品牌色：青绿主色 + 深色模式
-const dhthubTheme = {
+// ============================================================
+// DHThub · Vuetify 4 + Material Design 3 主题
+// 完整 MD3 色彩 token（light / dark），品牌主色为青绿（Teal）
+// ============================================================
+
+const md3Light = {
+  dark: false,
   colors: {
-    primary: '#0f766e',
-    secondary: '#0e7490',
-    accent: '#14b8a6',
-    error: '#dc2626',
-    info: '#0284c7',
-    success: '#16a34a',
-    warning: '#d97706',
-    surface: '#ffffff',
-    background: '#f6f8f7',
+    primary: '#006a60',
+    onPrimary: '#ffffff',
+    primaryContainer: '#9cf2e2',
+    onPrimaryContainer: '#00201c',
+    primaryDarken1: '#00564e',
+
+    secondary: '#4a635e',
+    onSecondary: '#ffffff',
+    secondaryContainer: '#cce8e2',
+    onSecondaryContainer: '#06201c',
+    secondaryDarken1: '#375049',
+
+    tertiary: '#426278',
+    onTertiary: '#ffffff',
+    tertiaryContainer: '#c7e7ff',
+    onTertiaryContainer: '#001e2e',
+
+    error: '#ba1a1a',
+    onError: '#ffffff',
+    errorContainer: '#ffdad6',
+    onErrorContainer: '#410002',
+    errorDarken1: '#a80707',
+
+    warning: '#7a5900',
+    onWarning: '#ffffff',
+    warningContainer: '#ffdf9e',
+    onWarningContainer: '#261a00',
+
+    success: '#386a20',
+    onSuccess: '#ffffff',
+    successContainer: '#b7f295',
+    onSuccessContainer: '#072100',
+
+    info: '#00639b',
+    onInfo: '#ffffff',
+    infoContainer: '#cde5ff',
+    onInfoContainer: '#001d33',
+
+    surface: '#f8faf8',
+    onSurface: '#191c1b',
+    surfaceVariant: '#dae5e1',
+    onSurfaceVariant: '#3f4946',
+    surfaceContainer: '#edf0ee',
+    surfaceContainerHigh: '#e7eae8',
+    surfaceContainerHighest: '#e1e5e2',
+    surfaceContainerLow: '#f3f5f4',
+    surfaceContainerLowest: '#ffffff',
+    surfaceBright: '#f8faf8',
+    surfaceDim: '#d8dbd9',
+
+    background: '#f8faf8',
+    onBackground: '#191c1b',
+
+    outline: '#6f7976',
+    outlineVariant: '#bec9c5',
+    outlineInverse: '#899390',
+    inverseSurface: '#2e3130',
+    inverseOnSurface: '#eff1ef',
+    inversePrimary: '#7fd9c9',
+    scrim: '#000000',
+    shadow: '#000000',
   },
 }
 
-const dhthubDarkTheme = {
+const md3Dark = {
+  dark: true,
   colors: {
-    primary: '#2dd4bf',
-    secondary: '#38bdf8',
-    accent: '#5eead4',
-    error: '#f87171',
-    info: '#38bdf8',
-    success: '#4ade80',
-    warning: '#fbbf24',
-    surface: '#1e2a28',
-    background: '#131b1a',
+    primary: '#7fd9c9',
+    onPrimary: '#00382f',
+    primaryContainer: '#005047',
+    onPrimaryContainer: '#9cf2e2',
+    primaryDarken1: '#9cefe0',
+
+    secondary: '#b0ccc5',
+    onSecondary: '#1b352f',
+    secondaryContainer: '#324b46',
+    onSecondaryContainer: '#cce8e2',
+    secondaryDarken1: '#c5e1da',
+
+    tertiary: '#a8c9e2',
+    onTertiary: '#0e3144',
+    tertiaryContainer: '#29485d',
+    onTertiaryContainer: '#c7e7ff',
+
+    error: '#ffb4ab',
+    onError: '#690005',
+    errorContainer: '#93000a',
+    onErrorContainer: '#ffdad6',
+    errorDarken1: '#ffcabf',
+
+    warning: '#f6c250',
+    onWarning: '#3f2e00',
+    warningContainer: '#5c4400',
+    onWarningContainer: '#ffdf9e',
+
+    success: '#9cd578',
+    onSuccess: '#0b3a00',
+    successContainer: '#23540e',
+    onSuccessContainer: '#b7f295',
+
+    info: '#9ccbff',
+    onInfo: '#003352',
+    infoContainer: '#004a75',
+    onInfoContainer: '#cde5ff',
+
+    surface: '#101413',
+    onSurface: '#e0e3e1',
+    surfaceVariant: '#3f4946',
+    onSurfaceVariant: '#bec9c5',
+    surfaceContainer: '#151918',
+    surfaceContainerHigh: '#1f2322',
+    surfaceContainerHighest: '#2a2e2c',
+    surfaceContainerLow: '#111514',
+    surfaceContainerLowest: '#0b0f0e',
+    surfaceBright: '#363a38',
+    surfaceDim: '#101413',
+
+    background: '#101413',
+    onBackground: '#e0e3e1',
+
+    outline: '#899390',
+    outlineVariant: '#3f4946',
+    outlineInverse: '#d8dbd9',
+    inverseSurface: '#e0e3e1',
+    inverseOnSurface: '#2e3130',
+    inversePrimary: '#006a60',
+    scrim: '#000000',
+    shadow: '#000000',
   },
 }
 
@@ -36,8 +146,8 @@ export default createVuetify({
   theme: {
     defaultTheme: 'light',
     themes: {
-      light: dhthubTheme,
-      dark: dhthubDarkTheme,
+      light: md3Light,
+      dark: md3Dark,
     },
   },
   icons: {
@@ -48,9 +158,18 @@ export default createVuetify({
     },
   },
   defaults: {
-    VBtn: { rounded: 'lg' },
-    VCard: { rounded: 'lg' },
-    VTextField: { rounded: 'lg', variant: 'outlined', density: 'comfortable' },
-    VSelect: { rounded: 'lg', variant: 'outlined', density: 'comfortable' },
+    // MD3：按钮采用药丸形，卡片 16px 大圆角，输入框统一描边样式
+    VBtn: { rounded: 'pill', variant: 'tonal', textTransform: 'none' },
+    VCard: { rounded: 'xl', elevation: 1 },
+    VTextField: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
+    VSelect: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
+    VTextarea: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
+    VSwitch: { color: 'primary' },
+    VList: { rounded: 'xl' },
+    VListItem: { rounded: 'xl' },
+    VChip: { rounded: 'pill' },
+    VNavigationDrawer: { elevation: 0 },
+    VAppBar: { elevation: 0 },
+    VToolbar: { color: 'surface' },
   },
 })
