@@ -159,35 +159,37 @@ jobs:
       - name: MainActivity 预留系统栏 inset（避免内容被状态栏/导航栏遮挡）
         run: |
           python3 - <<'PYEOF'
+          import os
           p = 'src-tauri/gen/android/app/src/main/java/com/dhthub/app/MainActivity.kt'
-          assert __import__('os').path.exists(p), 'MainActivity.kt not found'
-          code = '''package com.dhthub.app
-
-import android.os.Build
-import android.os.Bundle
-import android.view.WindowInsets
-import dev.tauri.tools.TauriActivity
-
-class MainActivity : TauriActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // 预留顶部状态栏与底部导航栏，避免 WebView 内容被系统栏遮挡（edge-to-edge 适配）
-        window.decorView.setOnApplyWindowInsetsListener { v, insets ->
-            if (Build.VERSION.SDK_INT >= 30) {
-                val bars = insets.getInsets(
-                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
-                )
-                v.setPadding(0, bars.top, 0, bars.bottom)
-            } else {
-                @Suppress("DEPRECATION")
-                v.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)
-            }
-            insets
-        }
-        window.decorView.requestApplyInsets()
-    }
-}
-'''
+          assert os.path.exists(p), 'MainActivity.kt not found'
+          code = '\n'.join([
+              'package com.dhthub.app',
+              '',
+              'import android.os.Build',
+              'import android.os.Bundle',
+              'import android.view.WindowInsets',
+              'import dev.tauri.tools.TauriActivity',
+              '',
+              'class MainActivity : TauriActivity() {',
+              '    override fun onCreate(savedInstanceState: Bundle?) {',
+              '        super.onCreate(savedInstanceState)',
+              '        // 预留顶部状态栏与底部导航栏，避免 WebView 内容被系统栏遮挡（edge-to-edge 适配）',
+              '        window.decorView.setOnApplyWindowInsetsListener { v, insets ->',
+              '            if (Build.VERSION.SDK_INT >= 30) {',
+              '                val bars = insets.getInsets(',
+              '                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()',
+              '                )',
+              '                v.setPadding(0, bars.top, 0, bars.bottom)',
+              '            } else {',
+              '                @Suppress("DEPRECATION")',
+              '                v.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)',
+              '            }',
+              '            insets',
+              '        }',
+              '        window.decorView.requestApplyInsets()',
+              '    }',
+              '}',
+          ])
           with open(p, 'w', encoding='utf-8') as f:
               f.write(code)
           print('MainActivity insets patch OK')
