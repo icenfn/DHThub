@@ -103,7 +103,7 @@ cargo tauri android build --apk --split-per-abi
 | `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 桌面更新签名（生成：`npx tauri signer generate -w ~/.dhthub/tauri.key`） |
 | `ANDROID_KEY_BASE64` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` | Android release 签名（生成：`keytool -genkeypair -v -keystore release.keystore -alias dhthub -keyalg RSA -keysize 2048 -validity 10000`，再 `base64 release.keystore`） |
 
-不配置上述密钥时：桌面端跳过自动更新通道（手动下载安装包）、Android 使用 debug 签名。
+不配置上述密钥时：桌面端跳过自动更新通道（手动下载安装包）、Android 自动使用生成的 debug 签名打包（可正常安装；正式对外发布建议配置正式密钥）。
 
 ## 订阅源 Schema
 

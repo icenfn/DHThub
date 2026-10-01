@@ -156,14 +156,23 @@ jobs:
               f.write(c)
           EOF
 
-      - name: 配置签名（未配置密钥时使用 debug 签名）
-        if: env.ANDROID_KEY_BASE64 != ''
+      - name: 配置签名（有密钥用正式签名，否则生成 debug 签名保证 APK 可安装）
         run: |
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > src-tauri/gen/android/keystore.properties
-          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
-          echo "storeFile=$RUNNER_TEMP/release.keystore" >> src-tauri/gen/android/keystore.properties
-          echo "storePassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
-          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/release.keystore
+          if [ -n "$ANDROID_KEY_BASE64" ]; then
+            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > src-tauri/gen/android/keystore.properties
+            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
+            echo "storeFile=$RUNNER_TEMP/release.keystore" >> src-tauri/gen/android/keystore.properties
+            echo "storePassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
+            base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/release.keystore
+          else
+            keytool -genkeypair -v -keystore $RUNNER_TEMP/debug.keystore \
+              -alias debug -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android -dname "CN=Debug, OU=DHThub, O=DHThub, L=City, ST=State, C=CN" >/dev/null 2>&1
+            echo "keyAlias=debug" > src-tauri/gen/android/keystore.properties
+            echo "keyPassword=android" >> src-tauri/gen/android/keystore.properties
+            echo "storeFile=$RUNNER_TEMP/debug.keystore" >> src-tauri/gen/android/keystore.properties
+            echo "storePassword=android" >> src-tauri/gen/android/keystore.properties
+          fi
 
       - name: 构建 APK（split-per-abi，四架构）
         run: npx tauri android build --apk --split-per-abi
