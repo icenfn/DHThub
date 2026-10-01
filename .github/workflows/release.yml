@@ -166,7 +166,7 @@ jobs:
           base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/release.keystore
 
       - name: 构建 APK（split-per-abi，四架构）
-        run: cargo tauri android build --apk --split-per-abi
+        run: npx tauri android build --apk --split-per-abi
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
