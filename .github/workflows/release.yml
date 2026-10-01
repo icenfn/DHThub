@@ -174,6 +174,38 @@ jobs:
             echo "storePassword=android" >> src-tauri/gen/android/keystore.properties
           fi
 
+      - name: Gradle 签名接线（tauri 2.12 模板不自动读 keystore.properties，按官方文档注入）
+        run: |
+          python3 - <<'PYEOF'
+          p = 'src-tauri/gen/android/app/build.gradle.kts'
+          s = open(p, encoding='utf-8').read()
+
+          marker = '    buildTypes {'
+          signing_block = '''    signingConfigs {
+        if (rootProject.file("keystore.properties").exists()) {
+            val keystoreProperties = Properties().apply {
+                load(rootProject.file("keystore.properties").inputStream())
+            }
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+    buildTypes {'''
+          assert marker in s, "marker buildTypes not found"
+          s = s.replace(marker, signing_block, 1)
+
+          rel = '        getByName("release") {'
+          assert rel in s, "release buildType not found"
+          s = s.replace(rel, rel + '\n            signingConfig = signingConfigs.findByName("release")', 1)
+
+          open(p, 'w', encoding='utf-8').write(s)
+          print("gradle signing wired OK")
+          PYEOF
+
       - name: 构建 APK（split-per-abi，四架构）
         run: npx tauri android build --apk --split-per-abi
         env:
