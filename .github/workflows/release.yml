@@ -90,6 +90,9 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      # secrets 不允许在 if: 中使用，先注入 job 级 env 供 if 判断
+      ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -145,7 +148,7 @@ jobs:
           EOF
 
       - name: 配置签名（未配置密钥时使用 debug 签名）
-        if: ${{ secrets.ANDROID_KEY_BASE64 != '' }}
+        if: env.ANDROID_KEY_BASE64 != ''
         run: |
           echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > src-tauri/gen/android/keystore.properties
           echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
