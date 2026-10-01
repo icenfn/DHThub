@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useTheme } from 'vuetify'
+import { useDisplay, useTheme } from 'vuetify'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
 import UpdateDialog from './components/UpdateDialog.vue'
 
 const theme = useTheme()
+const display = useDisplay()
 const router = useRouter()
 const route = useRoute()
 const showAgreement = ref(false)
@@ -92,8 +93,7 @@ function go(to: string) {
 <template>
   <v-app>
     <v-navigation-drawer
-      v-if="!isAgreementPage"
-      class="d-none d-sm-flex"
+      v-if="!isAgreementPage && !display.mobile.value"
       width="210"
       :permanent="true"
       color="background"
@@ -118,7 +118,7 @@ function go(to: string) {
       </v-list>
       <template #append>
         <div class="pa-4 text-caption text-medium-emphasis">
-          v0.1.0 · GitHub 发布
+          v0.1.1 · GitHub 发布
         </div>
       </template>
     </v-navigation-drawer>
@@ -128,8 +128,7 @@ function go(to: string) {
     </v-main>
 
     <v-bottom-navigation
-      v-if="!isAgreementPage"
-      class="d-flex d-sm-none"
+      v-if="!isAgreementPage && display.mobile.value"
       :model-value="route.path"
       color="primary"
       grow

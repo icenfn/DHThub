@@ -184,7 +184,7 @@ async fn clear_all_history(state: tauri::State<'_, AppState>) -> Result<(), Stri
 
 #[tauri::command]
 async fn check_update(state: tauri::State<'_, AppState>) -> Result<UpdateInfo, String> {
-    update::check_update(&state.http, "0.1.0").await
+    update::check_update(&state.http, "0.1.1").await
 }
 
 #[tauri::command]
