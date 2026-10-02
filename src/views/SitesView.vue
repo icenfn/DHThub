@@ -177,6 +177,13 @@ async function toggleEnabled(site: SiteConfig, v: boolean) {
   })
 }
 
+async function setDefaultFromMenu() {
+  const site = contextMenu.value.site
+  if (!site) return
+  contextMenu.value.show = false
+  await setDefault(site)
+}
+
 async function setDefault(site: SiteConfig) {
   await run(async () => {
     await sitesStore.setDefault(site.is_default ? null : (site.id ?? null))
@@ -269,8 +276,6 @@ async function reloadSites() {
   })
 }
 
-const customCount = computed(() => sitesStore.customSites.length)
-const subscribedCount = computed(() => sitesStore.subscribedSites.length)
 
 onMounted(async () => {
   await settings.ready()
@@ -285,13 +290,6 @@ onMounted(async () => {
 
 <template>
   <div class="px-3 px-sm-6 pt-2 pb-3 mx-auto" style="max-width: 1040px">
-    <div class="d-flex align-center mt-2 mb-4">
-      <div>
-        <div class="text-h6 font-weight-bold">搜索源</div>
-        <div class="text-caption text-medium-emphasis">共 {{ sitesStore.sites.length }} 个 · 订阅 {{ subscribedCount }} · 自定义 {{ customCount }}</div>
-      </div>
-      <v-spacer />
-    </div>
 
     <!-- 站点列表：逐个 v-card（长按 / 右键菜单不变） -->
     <v-progress-linear v-if="sitesStore.loading" indeterminate color="primary" />
@@ -312,14 +310,14 @@ onMounted(async () => {
       @touchmove="cancelLongPress"
       @touchcancel="cancelLongPress"
     >
-      <div class="d-flex align-center pa-2 pl-1">
-        <v-btn
-          :icon="site.is_default ? 'mdi-star' : 'mdi-star-outline'"
-          size="small"
-          variant="text"
-          :color="site.is_default ? 'warning' : 'grey'"
-          title="设为默认搜索源"
-          @click="setDefault(site)"
+      <div class="d-flex align-center pa-2">
+        <v-switch
+          :model-value="site.enabled"
+          color="primary"
+          hide-details
+          density="compact"
+          class="mr-2"
+          @update:model-value="toggleEnabled(site, !!$event)"
         />
         <div class="flex-grow-1 mr-2" style="min-width: 0">
           <div class="text-body-2 font-weight-bold text-truncate">
@@ -332,22 +330,15 @@ onMounted(async () => {
             <span v-if="site.update_time" class="ml-1">更新：{{ site.update_time }}</span>
           </div>
         </div>
-        <v-switch
-          :model-value="site.enabled"
-          color="primary"
-          hide-details
-          density="compact"
-          @update:model-value="toggleEnabled(site, !!$event)"
-        />
       </div>
     </v-card>
 
     <!-- 订阅源管理弹窗 -->
-    <v-dialog v-model="subscribeDialog" max-width="560">
+    <v-dialog v-model="subscribeDialog" width="auto" max-width="560">
       <v-card rounded="lg">
         <v-card-title class="text-subtitle-1 font-weight-bold">订阅源管理</v-card-title>
         <v-divider />
-        <v-card-text>
+        <v-card-text style="min-width: min(80vw, 320px)">
           <v-text-field
             v-model="subscribeUrl"
             label="订阅仓库地址（GitHub Raw / JSON）"
@@ -356,7 +347,7 @@ onMounted(async () => {
             density="compact"
             class="mb-3"
           />
-          <div class="d-flex align-center ga-2">
+          <div class="d-flex flex-wrap ga-2">
             <v-btn
               color="primary"
               variant="flat"
@@ -370,9 +361,8 @@ onMounted(async () => {
             <v-btn variant="tonal" color="secondary" prepend-icon="mdi-export" :disabled="busying" @click="doExport">导出</v-btn>
             <v-btn variant="text" color="error" prepend-icon="mdi-restore" :disabled="busying" @click="doReset">重置</v-btn>
           </div>
-          <div class="text-caption text-medium-emphasis mt-3">
-            <span v-if="sitesStore.subscribedAt">上次更新：{{ sitesStore.subscribedAt }} · </span>
-            当前镜像：{{ settings.getSelectedMirror().name }}
+          <div v-if="sitesStore.subscribedAt" class="text-caption text-medium-emphasis mt-3">
+            上次更新：{{ sitesStore.subscribedAt }}
           </div>
         </v-card-text>
       </v-card>
@@ -387,7 +377,7 @@ onMounted(async () => {
       @click="openAdd"
     />
     <v-fab
-      icon="mdi-download-cloud-outline"
+      icon="mdi-cloud-download-outline"
       color="secondary"
       title="订阅源管理"
       style="position: fixed; right: 20px; bottom: calc(140px + env(safe-area-inset-bottom)); z-index: 1200"
@@ -407,6 +397,11 @@ onMounted(async () => {
           prepend-icon="mdi-pencil-outline"
           title="编辑"
           @click="editFromMenu"
+        />
+        <v-list-item
+          :prepend-icon="contextMenu.site?.is_default ? 'mdi-star-off-outline' : 'mdi-star-outline'"
+          :title="contextMenu.site?.is_default ? '取消默认搜索源' : '设为默认搜索源'"
+          @click="setDefaultFromMenu"
         />
         <v-list-item prepend-icon="mdi-delete-outline" title="删除搜索源" color="error" @click="askDelete" />
       </v-list>

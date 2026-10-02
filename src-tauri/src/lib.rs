@@ -5,6 +5,9 @@ mod models;
 mod search;
 mod sites;
 
+#[cfg(target_os = "android")]
+mod sysbar;
+
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
 use models::{SiteConfig, SiteOutcome};
 use sites::SiteStore;
@@ -218,7 +221,24 @@ pub fn run() {
             get_history,
             clear_history,
             clear_all_history,
+            set_system_bar_theme
         ])
         .run(tauri::generate_context!())
         .expect("DHThub 启动失败");
+}
+
+// ---------- 系统栏主题（Android 专用；桌面端 no-op） ----------
+
+/// 设置 Android 状态栏 / 导航栏颜色与图标明暗，跟随应用主题
+#[tauri::command]
+fn set_system_bar_theme(dark: bool) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        sysbar::apply(dark)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = dark;
+        Ok(())
+    }
 }

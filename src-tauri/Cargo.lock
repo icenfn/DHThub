@@ -894,10 +894,12 @@ dependencies = [
 
 [[package]]
 name = "dhthub"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "chrono",
  "futures",
+ "jni",
+ "ndk-context",
  "reqwest 0.13.1",
  "scraper",
  "serde",

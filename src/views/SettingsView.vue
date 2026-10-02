@@ -7,13 +7,11 @@ import { useSitesStore } from '../stores/sites'
 import { invoke, isTauri } from '../lib/tauri'
 import { speedTestMirror, MIRROR_PROBE_URL } from '../lib/mirrors'
 import { checkUpdate, updateChecking } from '../lib/update'
-import { applyImmersive } from '../lib/immersive'
 import type { GithubMirror, MirrorSpeedResult } from '../types'
 
 const sitesStore = useSitesStore()
 const themeMode = ref<'system' | 'light' | 'dark'>('system')
 const autoCheck = ref(true)
-const immersiveBar = ref(false)
 const toast = ref('')
 const showToast = ref(false)
 const clearing = ref(false)
@@ -71,14 +69,6 @@ async function saveAutoCheck(v: boolean) {
   autoCheck.value = v
   await settings.set('autoCheckUpdate', v)
   notice(v ? '已开启自动检测更新（启动时检查）' : '已关闭自动检测更新')
-}
-
-// ---------- 沉浸式状态栏 ----------
-async function saveImmersive(v: boolean) {
-  immersiveBar.value = v
-  await settings.set('immersiveStatusBar', v)
-  await applyImmersive(v)
-  notice(v ? '已开启沉浸式状态栏' : '已关闭沉浸式状态栏')
 }
 
 // ---------- 数据 ----------
@@ -215,7 +205,6 @@ onMounted(async () => {
   await settings.ready()
   themeMode.value = settings.get('theme')
   autoCheck.value = settings.get('autoCheckUpdate')
-  immersiveBar.value = settings.get('immersiveStatusBar')
   await refreshMirrors()
   await sitesStore.load().catch(() => undefined)
 })
@@ -270,19 +259,6 @@ onMounted(async () => {
                 <div class="text-caption text-medium-emphasis">启动时静默检查 GitHub Release，发现新版本后通过提示条提醒</div>
               </div>
               <v-switch :model-value="autoCheck" color="primary" hide-details @update:model-value="saveAutoCheck(!!$event)" />
-            </div>
-            <v-divider class="my-2" />
-            <div class="d-flex align-center">
-              <div class="mr-auto">
-                <div class="text-subtitle-2 font-weight-bold">沉浸式状态栏（beta）</div>
-                <div class="text-caption text-medium-emphasis">Android 下隐藏系统状态栏，全屏沉浸体验（重新开启后生效）</div>
-              </div>
-              <v-switch
-                :model-value="immersiveBar"
-                color="primary"
-                hide-details
-                @update:model-value="saveImmersive(!!$event)"
-              />
             </div>
             <v-btn
               color="primary"
@@ -422,7 +398,7 @@ onMounted(async () => {
         </v-card>
 
         <!-- 关于 -->
-        <v-card class="mb-3" @click="$router.push('/about')">
+        <v-card class="mb-3" rounded="lg" @click="$router.push('/about')">
           <v-card-item>
             <template #prepend>
               <v-avatar color="success-container" variant="flat" rounded="lg">

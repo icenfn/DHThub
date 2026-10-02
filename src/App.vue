@@ -5,7 +5,7 @@ import { useTheme } from 'vuetify'
 import { useMediaQuery } from '@vueuse/core'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
-import { applyImmersive } from './lib/immersive'
+import { applySystemBarTheme } from './lib/sysbar'
 import {
   checkUpdate,
   openReleasePage,
@@ -39,10 +39,14 @@ async function applyTheme() {
   } else {
     theme.change(mode)
   }
+  void applySystemBarTheme(theme.global.name.value === 'dark')
 }
 
 watch(prefersDark, (v) => {
-  if (settings.get('theme') === 'system') theme.change(v ? 'dark' : 'light')
+  if (settings.get('theme') === 'system') {
+    theme.change(v ? 'dark' : 'light')
+    void applySystemBarTheme(theme.global.name.value === 'dark')
+  }
 })
 
 watch(
@@ -54,8 +58,6 @@ onMounted(async () => {
   await settings.ready()
   applyTheme()
   // 自动检测更新：启动即静默检查（snackbar 提示）
-  // 沉浸式状态栏（Android）：应用保存的开关状态
-  void applyImmersive(settings.get('immersiveStatusBar'))
   if (isTauri && settings.get('autoCheckUpdate')) {
     void checkUpdate()
   }
@@ -96,3 +98,19 @@ onMounted(async () => {
     </v-snackbar>
   </v-app>
 </template>
+
+<style>
+/* 长按 UI 文字不弹系统选择框；输入框内仍可选择/编辑 */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+</style>
