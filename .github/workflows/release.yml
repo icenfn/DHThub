@@ -146,13 +146,7 @@ jobs:
           # 在 root 与 app 工程的 gradle.properties 写入覆盖值，只编译 arm64 + arm。
           for f in src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties; do
             touch "$f"
-            cat >> "$f" <<'EOF'
-
-# DHThub：只构建 arm64-v8a + armeabi-v7a，移除 x86 / x86_64
-abiList=arm64-v8a,armeabi-v7a
-archList=arm64,arm
-targetList=aarch64-linux-android,armv7-linux-androideabi
-EOF
+            printf '\n# DHThub: 只构建 arm64-v8a + armeabi-v7a\nabiList=arm64-v8a,armeabi-v7a\narchList=arm64,arm\ntargetList=aarch64-linux-android,armv7-linux-androideabi\n' >> "$f"
           done
           grep -hE '^(abiList|archList|targetList)=' src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties
 
