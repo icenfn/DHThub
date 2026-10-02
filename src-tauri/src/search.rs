@@ -9,8 +9,8 @@ use tokio::sync::Semaphore;
 
 /// 最大并发请求数
 const MAX_CONCURRENCY: usize = 6;
-/// 每个站点请求失败后最多重试次数
-const MAX_RETRY: u32 = 1;
+/// 每个站点请求失败后最多重试次数（磁力聚合为尽力而为，重试会拉长总耗时）
+const MAX_RETRY: u32 = 0;
 
 /// 并发执行多站点搜索
 pub async fn search_multi(
@@ -103,7 +103,7 @@ async fn fetch_html(
     url: &str,
 ) -> Result<String, String> {
     let mut req = client.get(url).timeout(std::time::Duration::from_millis(
-        site.request.timeout_ms.max(3000),
+        site.request.timeout_ms.clamp(3000, 10000),
     ));
 
     let mut headers = site.request.headers.clone();

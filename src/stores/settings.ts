@@ -19,6 +19,8 @@ export interface SettingsData {
   githubMirrorId: string
   /** 自动检测更新：启动时静默检查新版本，发现后提示条提醒 */
   autoCheckUpdate: boolean
+  /** 沉浸式状态栏（beta）：Android 下隐藏系统状态栏（全屏沉浸） */
+  immersiveStatusBar: boolean
 }
 
 export const DEFAULT_SUBSCRIBE_URL =
@@ -48,6 +50,7 @@ const DEFAULTS: SettingsData = {
   githubMirrors: BUILTIN_MIRRORS.map((m) => ({ ...m })),
   githubMirrorId: 'direct',
   autoCheckUpdate: true,
+  immersiveStatusBar: false,
 }
 
 class SettingsStore {
@@ -137,6 +140,7 @@ class SettingsStore {
       merged.githubMirrorId = merged.githubMirrors[0]?.id ?? 'direct'
     }
     if (typeof merged.autoCheckUpdate !== 'boolean') merged.autoCheckUpdate = true
+    if (typeof merged.immersiveStatusBar !== 'boolean') merged.immersiveStatusBar = false
     return merged
   }
 
@@ -264,7 +268,7 @@ class SettingsStore {
     const merged = this.merge({ ...this.data, ...incoming } as Partial<SettingsData>)
     // 统计实际导入的字段数
     let imported = 0
-    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorId', 'autoCheckUpdate'] as const).forEach(
+    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorId', 'autoCheckUpdate', 'immersiveStatusBar'] as const).forEach(
       (k) => {
         if (incoming[k] !== undefined) imported++
       },

@@ -894,7 +894,7 @@ dependencies = [
 
 [[package]]
 name = "dhthub"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "chrono",
  "futures",

@@ -78,11 +78,12 @@ async function doSearch(kw = keyword.value, p = 1) {
   errorMsg.value = ''
   try {
     const ids = engineId.value ? [engineId.value] : undefined
+    // 搜索为多源并发聚合，整体耗时取决于站点数量，放宽到 60s（单站超时上限 10s、无重试）
     outcomes.value = await invoke<SiteOutcome[]>('search_sites', {
       keyword: k,
       siteIds: ids,
       page: p,
-    })
+    }, 60000)
     if (outcomes.value.length === 0) errorMsg.value = '没有启用的搜索源，请先到「搜索源」页订阅或启用'
   } catch (e) {
     errorMsg.value = String(e)

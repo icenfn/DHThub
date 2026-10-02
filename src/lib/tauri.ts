@@ -20,7 +20,7 @@ export async function invoke<T = unknown>(
     invoke<T>(cmd, args),
     new Promise<never>((_, reject) =>
       setTimeout(
-        () => reject(new Error(`请求超时（${timeoutMs}ms），请检查网络或镜像配置`)),
+        () => reject(new Error(`请求超时（${timeoutMs}ms）`)),
         timeoutMs,
       ),
     ),

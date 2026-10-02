@@ -5,6 +5,7 @@ import { useTheme } from 'vuetify'
 import { useMediaQuery } from '@vueuse/core'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
+import { applyImmersive } from './lib/immersive'
 import {
   checkUpdate,
   openReleasePage,
@@ -53,6 +54,8 @@ onMounted(async () => {
   await settings.ready()
   applyTheme()
   // 自动检测更新：启动即静默检查（snackbar 提示）
+  // 沉浸式状态栏（Android）：应用保存的开关状态
+  void applyImmersive(settings.get('immersiveStatusBar'))
   if (isTauri && settings.get('autoCheckUpdate')) {
     void checkUpdate()
   }

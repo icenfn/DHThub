@@ -2,9 +2,9 @@
 import { onMounted, ref } from 'vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isTauri } from '../lib/tauri'
-import { checkUpdate, updateChecking } from '../lib/update'
+import { RELEASES_PAGE_URL } from '../lib/update'
 
-const version = ref('0.3.3')
+const version = ref('0.3.4')
 
 onMounted(async () => {
   if (isTauri) {
@@ -17,8 +17,7 @@ onMounted(async () => {
   }
 })
 
-async function openRepo() {
-  const url = 'https://github.com/icenfn/DHThub'
+async function openUrlSafe(url: string) {
   try {
     await openUrl(url)
   } catch {
@@ -53,18 +52,18 @@ async function openRepo() {
               Tauri 2.12 · Vue 3 · Vuetify 4（MD3）· Rust
               <br />Linux / Windows / Android 三端，GitHub Actions 自动构建发布
             </div>
-            <div class="d-flex ga-2 mt-3">
-              <v-btn variant="tonal" color="primary" prepend-icon="mdi-update" :loading="updateChecking" @click="checkUpdate">
-                检查更新
-              </v-btn>
-              <v-btn variant="tonal" color="secondary" prepend-icon="mdi-github" @click="openRepo">
+            <div class="d-flex flex-wrap justify-center ga-2 mt-3">
+              <v-btn variant="tonal" color="primary" prepend-icon="mdi-github" @click="openUrlSafe('https://github.com/icenfn/DHThub')">
                 GitHub 仓库
+              </v-btn>
+              <v-btn variant="tonal" color="secondary" prepend-icon="mdi-history" @click="openUrlSafe(RELEASES_PAGE_URL)">
+                版本历史
               </v-btn>
             </div>
           </div>
           <v-divider class="my-2" />
           <div class="text-caption text-center text-medium-emphasis pa-2">
-            开源项目 · 不包含广告与商业追踪
+            开源项目（MIT License）· 不包含广告与商业追踪
           </div>
         </v-card>
       </div>

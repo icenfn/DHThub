@@ -16,6 +16,7 @@ const toast = ref('')
 const showToast = ref(false)
 const busying = ref(false)
 
+const subscribeDialog = ref(false)
 const addDialog = ref(false)
 const editing = ref<SiteConfig | null>(null)
 const form = ref<SiteConfig>(emptyForm())
@@ -290,114 +291,108 @@ onMounted(async () => {
         <div class="text-caption text-medium-emphasis">共 {{ sitesStore.sites.length }} 个 · 订阅 {{ subscribedCount }} · 自定义 {{ customCount }}</div>
       </div>
       <v-spacer />
-      <v-btn variant="tonal" color="secondary" prepend-icon="mdi-import" size="small" @click="doImport">导入</v-btn>
-      <v-btn variant="tonal" color="secondary" prepend-icon="mdi-export" size="small" class="ml-2" @click="doExport">导出</v-btn>
-      <v-btn variant="text" color="error" prepend-icon="mdi-restore" size="small" class="ml-2" @click="doReset">重置</v-btn>
     </div>
 
-    <!-- 订阅仓库 -->
-    <v-card rounded="lg" class="mb-3">
-      <v-card-item>
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal">
-            <v-icon icon="mdi-download-circle-outline" />
-          </v-avatar>
-        </template>
-        <v-card-title class="text-subtitle-1 font-weight-bold">订阅在线搜索仓库</v-card-title>
-        <v-card-subtitle class="text-caption">
-          输入任意 GitHub Raw / JSON 地址，拉取站点列表（仓库内置：sites/default.json）
-          <span class="ml-1 text-medium-emphasis">镜像：{{ settings.getSelectedMirror().name }}</span>
-          <span v-if="sitesStore.subscribedAt" class="ml-1 text-medium-emphasis">上次更新：{{ sitesStore.subscribedAt }}</span>
-        </v-card-subtitle>
-      </v-card-item>
-      <v-card-text>
-        <div class="d-flex flex-column flex-sm-row ga-2">
-          <v-text-field
-            v-model="subscribeUrl"
-            label="订阅源地址"
-            hide-details
-            placeholder="https://raw.githubusercontent.com/icenfn/DHThub/main/sites/default.json"
-            density="comfortable"
-          />
-          <v-btn
-            color="primary"
-            variant="flat"
-            :loading="subscribing"
-            :disabled="busying"
-            @click="doSubscribe"
-          >
-            <v-icon icon="mdi-cloud-download-outline" class="mr-1" />拉取订阅
-          </v-btn>
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <!-- 站点列表 -->
-    <v-card rounded="lg">
-      <v-card-item>
-        <template #prepend>
-          <v-avatar color="secondary" variant="tonal">
-            <v-icon icon="mdi-antenna" />
-          </v-avatar>
-        </template>
-        <v-card-title class="text-subtitle-1 font-weight-bold">搜索源列表</v-card-title>
-        <v-card-subtitle class="text-caption">开启的站点才会参与搜索；长按或右键站点可编辑 / 删除</v-card-subtitle>
-        <template #append>
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" size="small" @click="openAdd">
-            添加自定义
-          </v-btn>
-        </template>
-      </v-card-item>
-
-      <v-divider />
-      <v-progress-linear v-if="sitesStore.loading" indeterminate color="primary" />
-      <v-empty-state
-        v-if="!sitesStore.loading && sitesStore.sites.length === 0"
-        icon="mdi-antenna-off"
-        title="还没有任何搜索源"
-        text="点击上方「拉取订阅」加载内置订阅源，或添加自定义站点"
-      />
-      <v-list v-else>
-        <v-list-item
-          v-for="site in sitesStore.sites"
-          :key="site.id"
-          @contextmenu.prevent="onRowContextmenu(site, $event)"
-          @touchstart="onRowTouchstart(site, $event)"
-          @touchend="cancelLongPress"
-          @touchmove="cancelLongPress"
-          @touchcancel="cancelLongPress"
-        >
-          <template #prepend>
-            <v-btn
-              :icon="site.is_default ? 'mdi-star' : 'mdi-star-outline'"
-              size="small"
-              variant="text"
-              :color="site.is_default ? 'warning' : 'grey'"
-              title="设为默认搜索源"
-              @click="setDefault(site)"
-            />
-          </template>
-          <v-list-item-title class="text-body-2 font-weight-bold">
+    <!-- 站点列表：逐个 v-card（长按 / 右键菜单不变） -->
+    <v-progress-linear v-if="sitesStore.loading" indeterminate color="primary" />
+    <v-empty-state
+      v-if="!sitesStore.loading && sitesStore.sites.length === 0"
+      icon="mdi-antenna-off"
+      title="还没有任何搜索源"
+      text="点击右下角「订阅源管理」加载内置订阅源，或「自定义搜索源」添加站点"
+    />
+    <v-card
+      v-for="site in sitesStore.sites"
+      :key="site.id"
+      rounded="lg"
+      class="mb-2"
+      @contextmenu.prevent="onRowContextmenu(site, $event)"
+      @touchstart="onRowTouchstart(site, $event)"
+      @touchend="cancelLongPress"
+      @touchmove="cancelLongPress"
+      @touchcancel="cancelLongPress"
+    >
+      <div class="d-flex align-center pa-2 pl-1">
+        <v-btn
+          :icon="site.is_default ? 'mdi-star' : 'mdi-star-outline'"
+          size="small"
+          variant="text"
+          :color="site.is_default ? 'warning' : 'grey'"
+          title="设为默认搜索源"
+          @click="setDefault(site)"
+        />
+        <div class="flex-grow-1 mr-2" style="min-width: 0">
+          <div class="text-body-2 font-weight-bold text-truncate">
             {{ site.name }}
             <v-chip v-if="site.is_custom" size="x-small" color="secondary" variant="tonal" class="ml-1">自定义</v-chip>
             <v-chip v-if="site.is_default" size="x-small" color="warning" variant="flat" class="ml-1">默认</v-chip>
-          </v-list-item-title>
-          <v-list-item-subtitle class="text-caption">
+          </div>
+          <div class="text-caption text-medium-emphasis text-truncate">
             {{ site.info || '—' }}
-            <span v-if="site.update_time" class="ml-2 text-medium-emphasis">更新：{{ site.update_time }}</span>
-          </v-list-item-subtitle>
-          <template #append>
-            <v-switch
-              :model-value="site.enabled"
-              color="primary"
-              hide-details
-              density="compact"
-              @update:model-value="toggleEnabled(site, !!$event)"
-            />
-          </template>
-        </v-list-item>
-      </v-list>
+            <span v-if="site.update_time" class="ml-1">更新：{{ site.update_time }}</span>
+          </div>
+        </div>
+        <v-switch
+          :model-value="site.enabled"
+          color="primary"
+          hide-details
+          density="compact"
+          @update:model-value="toggleEnabled(site, !!$event)"
+        />
+      </div>
     </v-card>
+
+    <!-- 订阅源管理弹窗 -->
+    <v-dialog v-model="subscribeDialog" max-width="560">
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">订阅源管理</v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-text-field
+            v-model="subscribeUrl"
+            label="订阅仓库地址（GitHub Raw / JSON）"
+            hide-details
+            placeholder="https://raw.githubusercontent.com/icenfn/DHThub/main/sites/default.json"
+            density="compact"
+            class="mb-3"
+          />
+          <div class="d-flex align-center ga-2">
+            <v-btn
+              color="primary"
+              variant="flat"
+              :loading="subscribing"
+              :disabled="busying"
+              @click="doSubscribe"
+            >
+              <v-icon icon="mdi-cloud-download-outline" class="mr-1" />拉取订阅
+            </v-btn>
+            <v-btn variant="tonal" color="secondary" prepend-icon="mdi-import" :disabled="busying" @click="doImport">导入</v-btn>
+            <v-btn variant="tonal" color="secondary" prepend-icon="mdi-export" :disabled="busying" @click="doExport">导出</v-btn>
+            <v-btn variant="text" color="error" prepend-icon="mdi-restore" :disabled="busying" @click="doReset">重置</v-btn>
+          </div>
+          <div class="text-caption text-medium-emphasis mt-3">
+            <span v-if="sitesStore.subscribedAt">上次更新：{{ sitesStore.subscribedAt }} · </span>
+            当前镜像：{{ settings.getSelectedMirror().name }}
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- 悬浮按钮：自定义搜索源 / 订阅源管理 -->
+    <v-fab
+      icon="mdi-plus"
+      color="primary"
+      title="自定义搜索源"
+      style="position: fixed; right: 20px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 1200"
+      @click="openAdd"
+    />
+    <v-fab
+      icon="mdi-download-cloud-outline"
+      color="secondary"
+      title="订阅源管理"
+      style="position: fixed; right: 20px; bottom: calc(140px + env(safe-area-inset-bottom)); z-index: 1200"
+      @click="subscribeDialog = true"
+    />
 
     <!-- 长按 / 右键上下文菜单 -->
     <v-menu
