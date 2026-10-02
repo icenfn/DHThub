@@ -81,18 +81,16 @@ jobs:
         run: |
           DEB=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
           RPM=$(find src-tauri/target/release/bundle/rpm -name "*.rpm" | head -1)
-          mv "$DEB" "$(dirname "$DEB")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-amd64.deb"
-          mv "$RPM" "$(dirname "$RPM")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-x86_64.rpm"
-          echo "deb=$(dirname "$DEB")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-amd64.deb" >> $GITHUB_OUTPUT
-          echo "rpm=$(dirname "$RPM")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-x86_64.rpm" >> $GITHUB_OUTPUT
+          mkdir -p release
+          mv "$DEB" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-amd64.deb"
+          mv "$RPM" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-x86_64.rpm"
+          ls -la release
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-release
-          path: |
-            ${{ steps.rename-linux.outputs.deb }}
-            ${{ steps.rename-linux.outputs.rpm }}
+          path: release
           if-no-files-found: error
 
   build-windows:
@@ -303,22 +301,20 @@ jobs:
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 改名 arm64 / armv7 APK 并上传（x86 空壳不发布）
+      - name: 改名 arm64 / armv7 APK 并归拢（x86 空壳不发布）
         run: |
           V=${{ needs.prepare-release.outputs.version }}
           cd src-tauri/gen/android/app/build/outputs/apk
-          mv arm64/release/app-arm64-release.apk arm64/release/DHThub-$V-android-arm64.apk
-          mv arm/release/app-arm-release.apk arm/release/DHThub-$V-android-armv7.apk
-          echo "arm64=arm64/release/DHThub-$V-android-arm64.apk" >> $GITHUB_OUTPUT
-          echo "armv7=arm/release/DHThub-$V-android-armv7.apk" >> $GITHUB_OUTPUT
+          mkdir -p ../../../../../../../release
+          cp arm64/release/app-arm64-release.apk ../../../../../../../release/DHThub-$V-android-arm64.apk
+          cp arm/release/app-arm-release.apk ../../../../../../../release/DHThub-$V-android-armv7.apk
+          ls -la ../../../../../../../release
 
       - name: Upload Android APKs
         uses: actions/upload-artifact@v4
         with:
           name: android-release
-          path: |
-            src-tauri/gen/android/app/build/outputs/apk/arm64/release/DHThub-${{ needs.prepare-release.outputs.version }}-android-arm64.apk
-            src-tauri/gen/android/app/build/outputs/apk/arm/release/DHThub-${{ needs.prepare-release.outputs.version }}-android-armv7.apk
+          path: release
           if-no-files-found: error
 
   create-release:
