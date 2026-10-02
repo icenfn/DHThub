@@ -142,9 +142,9 @@ onMounted(async () => {
     </v-app-bar>
 
     <v-main class="flex-grow-1 overflow-y-auto">
-      <div class="px-4 px-sm-8 py-4 mx-auto" style="max-width: 1040px">
+      <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
         <!-- 搜索区（可修改关键词重新搜索） -->
-        <v-sheet rounded="xl" class="pa-4" elevation="1" color="surface" border="sm">
+        <v-sheet rounded="xl" class="pa-3" elevation="1" color="surface" border="sm">
           <div class="d-flex flex-column flex-sm-row ga-2">
             <v-text-field
               v-model="keyword"
@@ -178,7 +178,7 @@ onMounted(async () => {
 
         <!-- 结果区 -->
         <template v-if="searchedKeyword">
-          <div class="d-flex align-center ga-3 mt-4 flex-wrap">
+          <div class="d-flex align-center ga-3 mt-3 flex-wrap">
             <div class="text-subtitle-1">
               “<strong>{{ searchedKeyword }}</strong>” 的搜索结果
               <span class="text-medium-emphasis text-caption">
@@ -192,7 +192,7 @@ onMounted(async () => {
           </div>
 
           <!-- 过滤/排序 -->
-          <div class="d-flex flex-column flex-sm-row ga-2 mt-2">
+          <div class="d-flex flex-column flex-sm-row ga-2 mt-1">
             <v-text-field
               v-model="filterText"
               label="在当前结果中过滤标题"
@@ -218,9 +218,9 @@ onMounted(async () => {
             />
           </div>
 
-          <v-alert v-if="errorMsg" type="warning" class="mt-3">{{ errorMsg }}</v-alert>
+          <v-alert v-if="errorMsg" type="warning" class="mt-2">{{ errorMsg }}</v-alert>
 
-          <div v-if="searching" class="mt-6">
+          <div v-if="searching" class="mt-4">
             <v-progress-linear indeterminate color="primary" />
             <div class="text-center text-medium-emphasis mt-2">正在并发请求各搜索源…</div>
           </div>
@@ -234,7 +234,7 @@ onMounted(async () => {
           </div>
 
           <!-- 分站点结果 -->
-          <div v-else class="mt-3 d-flex flex-column ga-4">
+          <div v-else class="mt-2 d-flex flex-column ga-3">
             <v-card v-for="o in filteredOutcomes" :key="o.site_id" rounded="lg">
               <v-card-item>
                 <template #prepend>
@@ -303,7 +303,7 @@ onMounted(async () => {
           icon="mdi-magnify"
           title="输入关键词开始搜索"
           text="关键词将并发请求所有已启用的搜索源并聚合结果"
-          class="mt-8"
+          class="mt-6"
         />
 
         <MagnetDetailDialog

@@ -192,6 +192,17 @@ jobs:
           done
           grep -hE '^(abiList|archList|targetList)=' src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties
 
+      - name: 固定 versionCode / versionName（保证跨版本升级安装）
+        run: |
+          V="${{ needs.prepare-release.outputs.version }}"
+          CLEAN="${V#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CLEAN"
+          CODE=$(( (MAJOR * 10000) + (MINOR * 100) + PATCH ))
+          touch src-tauri/gen/android/app/tauri.properties
+          printf 'tauri.android.versionCode=%s\ntauri.android.versionName=%s\n' "$CODE" "$CLEAN" >> src-tauri/gen/android/app/tauri.properties
+          echo "versionCode=$CODE versionName=$CLEAN"
+          grep -E 'versionCode|versionName' src-tauri/gen/android/app/tauri.properties
+
       - name: 覆盖 Android 图标为自定义图标（tauri init 使用模板默认图标，需用 icons/android 覆盖）
         run: |
           cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
@@ -258,12 +269,11 @@ jobs:
             echo "storePassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
             base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/release.keystore
           else
-            keytool -genkeypair -v -keystore $RUNNER_TEMP/debug.keystore \
-              -alias debug -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass android -keypass android -dname "CN=Debug, OU=DHThub, O=DHThub, L=City, ST=State, C=CN" >/dev/null 2>&1
-            echo "keyAlias=debug" > src-tauri/gen/android/keystore.properties
+            # 使用仓库内置的稳定 debug 签名（每次构建同一密钥，保证旧版本覆盖升级不报“软件包冲突”）
+            cp android/debug.keystore $RUNNER_TEMP/release.keystore
+            echo "keyAlias=androiddebugkey" > src-tauri/gen/android/keystore.properties
             echo "keyPassword=android" >> src-tauri/gen/android/keystore.properties
-            echo "storeFile=$RUNNER_TEMP/debug.keystore" >> src-tauri/gen/android/keystore.properties
+            echo "storeFile=$RUNNER_TEMP/release.keystore" >> src-tauri/gen/android/keystore.properties
             echo "storePassword=android" >> src-tauri/gen/android/keystore.properties
           fi
 

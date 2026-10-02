@@ -15,6 +15,8 @@
 - Pinia
 - Vue Router
 - Vite 8
+- @zebra-ui/swiper（首页滑动窗口）
+- @vueuse/core
 
 ---
 
@@ -39,7 +41,7 @@ DHThub/
 
 # 功能
 
-- 首页为滑动窗口，内嵌「搜索 / 站点 / 历史」3 页，手机左右滑动切换，tab 自动跟随
+- 首页为 @zebra-ui/swiper 滑动窗口，内嵌「搜索 / 站点 / 历史」3 页，手机左右滑动切换，tab 自动跟随
 - 搜索结果在独立页面展示：并发聚合、过滤、排序、分页、搜索统计、磁力详情
 - 站点管理：仓库订阅源导入（JSON / 一键订阅）、自定义站点、默认引擎
 - GitHub 镜像：内置直连 + gh-proxy.com，可自定义添加；用于更新检测、订阅拉取、热词拉取
@@ -87,7 +89,7 @@ cargo tauri android build --apk --split-per-abi
 | `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 桌面更新签名（生成：`npx tauri signer generate -w ~/.dhthub/tauri.key`） |
 | `ANDROID_KEY_BASE64` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` | Android release 签名（生成：`keytool -genkeypair -v -keystore release.keystore -alias dhthub -keyalg RSA -keysize 2044 -validity 10000`，再 `base64 release.keystore`） |
 
-不配置上述密钥时：Android 自动使用生成的 debug 签名打包（可正常安装；正式对外发布建议配置正式密钥）。
+不配置上述密钥时：Android 使用仓库内置的稳定 debug 签名（`android/debug.keystore`，alias `androiddebugkey`）打包——每次构建同一密钥并随版本递增 versionCode，保证旧版本覆盖升级安装不报“软件包冲突”；正式对外发布建议配置正式密钥。
 
 # 免责声明
 

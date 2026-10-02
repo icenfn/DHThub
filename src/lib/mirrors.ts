@@ -76,11 +76,6 @@ export async function speedTestMirror(mirror: GithubMirror): Promise<MirrorSpeed
   }
 }
 
-/** 并发测速全部镜像（单项独立超时，互不阻塞） */
-export async function speedTestAll(mirrors: GithubMirror[]): Promise<MirrorSpeedResult[]> {
-  return Promise.all(mirrors.map(speedTestMirror))
-}
-
 /** 校验用户输入的自定义镜像前缀，返回规范化后的 base */
 export function normalizeMirrorBase(input: string): string {
   const v = input.trim()

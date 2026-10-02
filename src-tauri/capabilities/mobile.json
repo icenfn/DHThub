@@ -24,8 +24,6 @@
           "url": "https://*:*"
         }
       ]
-    },
-    "shell:allow-open",
-    "log:default"
+    }
   ]
 }

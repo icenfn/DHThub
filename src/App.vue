@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 应用外壳：仅承载全局逻辑（主题 / 更新提示），页面框架由各路由页面自行提供
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useTheme } from 'vuetify'
+import { useMediaQuery } from '@vueuse/core'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
 import {
@@ -13,30 +14,29 @@ import {
 } from './lib/update'
 
 const theme = useTheme()
-const mq = ref<MediaQueryList | null>(null)
+const prefersDark = useMediaQuery('(prefers-color-scheme: dark)')
 
 async function applyTheme() {
   await settings.ready()
   const mode = settings.get('theme')
   if (mode === 'system') {
-    theme.change(mq.value?.matches ? 'dark' : 'light')
+    theme.change(prefersDark.value ? 'dark' : 'light')
   } else {
     theme.change(mode)
   }
 }
 
-function onSystemThemeChange(e: MediaQueryListEvent) {
-  if (settings.get('theme') === 'system') {
-    theme.change(e.matches ? 'dark' : 'light')
-  }
-}
+watch(prefersDark, (v) => {
+  if (settings.get('theme') === 'system') theme.change(v ? 'dark' : 'light')
+})
 
-async function init() {
+watch(
+  () => settings.get('theme'),
+  () => applyTheme(),
+)
+
+onMounted(async () => {
   await settings.ready()
-  if (typeof window.matchMedia === 'function') {
-    mq.value = window.matchMedia('(prefers-color-scheme: dark)')
-    mq.value.addEventListener('change', onSystemThemeChange)
-  }
   applyTheme()
   // 自动检测更新：启动即静默检查（snackbar 提示）
   if (isTauri && settings.get('autoCheckUpdate')) {
@@ -46,16 +46,6 @@ async function init() {
   if (!isTauri) {
     console.info('[DHThub] 浏览器预览模式：搜索/站点功能需在 Tauri 应用中运行')
   }
-}
-
-watch(
-  () => settings.get('theme'),
-  () => applyTheme(),
-)
-
-onMounted(init)
-onBeforeUnmount(() => {
-  mq.value?.removeEventListener('change', onSystemThemeChange)
 })
 </script>
 

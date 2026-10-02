@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.1
+
+- 首页滑动窗口改用 @zebra-ui/swiper（参考 delin_ocr），替换自写 scroll-snap，修复滑动窗体布局失效
+- 依赖优化：移除冗余 @tauri-apps/plugin-updater / esbuild；Rust 端移除 tauri-plugin-updater / shell / log / thiserror 及对应权限；新增 @vueuse/core（App 主题跟随改用 useMediaQuery）；清理未使用的 speedTestAll
+- 全页面信息密度紧凑化（页面/卡片内边距、间距、标题字号收紧）
+- 修复 Android 已装旧版再装新版报“应用未安装-软件包与现有软件包存在冲突”：改用仓库内置稳定 debug 签名（每次构建同一密钥），并固定递增 versionCode
+- README 补充 v0.3.1 变更与 Android 升级说明
+
 ## v0.3.0
 
 - 搜索结果改为独立页面展示，首页仅保留搜索入口

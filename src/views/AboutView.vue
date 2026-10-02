@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isTauri } from '../lib/tauri'
 import { checkUpdate, updateChecking } from '../lib/update'
 
-const version = ref('0.3.0')
+const version = ref('0.3.1')
 
 onMounted(async () => {
   if (isTauri) {
@@ -28,20 +28,20 @@ async function openRepo() {
 </script>
 
 <template>
-  <div class="px-4 px-sm-8 py-4 mx-auto" style="max-width: 760px">
-    <v-card rounded="xl" class="mt-4 pa-4">
+  <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 760px">
+    <v-card rounded="xl" class="mt-3 pa-3">
       <div class="d-flex flex-column align-center text-center pa-4">
-        <v-avatar color="primary" size="72" rounded="lg">
-          <v-icon icon="mdi-flash-outline" size="40" />
+        <v-avatar color="primary" size="64" rounded="lg">
+          <v-icon icon="mdi-flash-outline" size="36" />
         </v-avatar>
-        <div class="text-h6 font-weight-bold mt-3">DHThub</div>
+        <div class="text-h6 font-weight-bold mt-2">DHThub</div>
         <div class="text-body-2 text-medium-emphasis">多源磁力链接聚合搜索</div>
-        <v-chip size="small" variant="tonal" color="primary" class="mt-2">v{{ version }}</v-chip>
-        <div class="text-caption text-medium-emphasis mt-3" style="max-width: 480px">
+        <v-chip size="small" variant="tonal" color="primary" class="mt-1">v{{ version }}</v-chip>
+        <div class="text-caption text-medium-emphasis mt-2" style="max-width: 480px">
           Tauri 2.12 · Vue 3 · Vuetify 4（MD3）· Rust
           <br />Linux / Windows / Android 三端，GitHub Actions 自动构建发布
         </div>
-        <div class="d-flex ga-2 mt-4">
+        <div class="d-flex ga-2 mt-3">
           <v-btn variant="tonal" color="primary" prepend-icon="mdi-update" :loading="updateChecking" @click="checkUpdate">
             检查更新
           </v-btn>

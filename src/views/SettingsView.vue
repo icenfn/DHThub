@@ -225,9 +225,9 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
     </v-app-bar>
 
     <v-main>
-      <div class="px-4 px-sm-8 py-4 mx-auto" style="max-width: 1040px">
+      <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
         <!-- 页头操作 -->
-        <div class="d-flex align-center mt-2 mb-4 flex-wrap ga-2">
+        <div class="d-flex align-center mt-1 mb-3 flex-wrap ga-2">
           <div class="text-caption text-medium-emphasis mr-auto">通用、GitHub 镜像与数据管理</div>
           <v-btn
             color="primary"
@@ -248,7 +248,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </div>
 
         <!-- 通用：外观 + 自动检测更新 -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
           <v-card-item>
             <template #prepend>
               <v-avatar color="primary-container" variant="flat" rounded="lg">
@@ -265,7 +265,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
               <v-radio label="浅色" value="light" color="primary" />
               <v-radio label="深色" value="dark" color="primary" />
             </v-radio-group>
-            <v-divider class="my-3" />
+            <v-divider class="my-2" />
             <div class="d-flex align-center">
               <div class="mr-auto">
                 <div class="text-subtitle-2 font-weight-bold">自动检测更新</div>
@@ -277,7 +277,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- GitHub 镜像 -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
           <v-card-item>
             <template #prepend>
               <v-avatar color="secondary-container" variant="flat" rounded="lg">
@@ -367,7 +367,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- 数据管理 -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
           <v-card-item>
             <template #prepend>
               <v-avatar color="error-container" variant="flat" rounded="lg">
@@ -404,7 +404,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- 订阅源 -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
           <v-card-item>
             <template #prepend>
               <v-avatar color="info-container" variant="flat" rounded="lg">
@@ -422,7 +422,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- 关于 -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
           <v-card-item>
             <template #prepend>
               <v-avatar color="success-container" variant="flat" rounded="lg">

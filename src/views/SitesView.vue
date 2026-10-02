@@ -225,7 +225,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="px-4 px-sm-8 py-4 mx-auto" style="max-width: 1040px">
+  <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
     <div class="d-flex align-center mt-2 mb-4">
       <div>
         <div class="text-h6 font-weight-bold">站点管理</div>
@@ -238,7 +238,7 @@ onMounted(async () => {
     </div>
 
     <!-- 订阅仓库 -->
-    <v-card rounded="lg" class="mb-4">
+    <v-card rounded="lg" class="mb-3">
       <v-card-item>
         <template #prepend>
           <v-avatar color="primary" variant="tonal">

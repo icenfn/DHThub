@@ -75,9 +75,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="px-4 px-sm-8 py-4 mx-auto" style="max-width: 1040px">
-    <v-sheet rounded="xl" class="pa-4 pa-sm-6" elevation="1" color="surface" border="sm">
-      <div class="text-h6 font-weight-bold mb-3">多源磁力搜索</div>
+  <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
+    <v-sheet rounded="xl" class="pa-3 pa-sm-4" elevation="1" color="surface" border="sm">
+      <div class="text-subtitle-1 font-weight-bold mb-2">多源磁力搜索</div>
       <div class="d-flex flex-column flex-sm-row ga-2">
         <v-text-field
           v-model="keyword"
@@ -115,7 +115,7 @@ onMounted(async () => {
       </div>
 
       <!-- 热门推荐 / 搜索历史 -->
-      <div v-if="hotWords.length" class="mt-4">
+      <div v-if="hotWords.length" class="mt-3">
         <div class="d-flex align-center">
           <span class="text-subtitle-2 text-medium-emphasis mr-2">热门推荐</span>
           <v-btn variant="text" size="x-small" color="primary" @click="shuffleHotWords">
@@ -134,7 +134,7 @@ onMounted(async () => {
           </v-chip>
         </div>
       </div>
-      <div v-if="searchHistory.length" class="mt-3">
+      <div v-if="searchHistory.length" class="mt-2">
         <div class="d-flex align-center">
           <span class="text-subtitle-2 text-medium-emphasis mr-2">搜索历史</span>
           <v-btn variant="text" size="x-small" color="error" @click="clearSearchHistory">
@@ -159,7 +159,7 @@ onMounted(async () => {
       icon="mdi-flash-outline"
       title="开始你的第一次搜索"
       text="输入关键词，DHThub 将并发请求所有已启用的搜索源并聚合结果"
-      class="mt-8"
+      class="mt-6"
     />
   </div>
 </template>
