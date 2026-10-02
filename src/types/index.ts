@@ -60,13 +60,6 @@ export interface HistoryEntry {
   time: number
 }
 
-/** 更新检测结果（releases/latest 重定向解析） */
-export interface UpdateCheckResult {
-  current_version: string
-  latest_version: string
-  has_update: boolean
-}
-
 export type HistoryKind = 'magnet' | 'copy' | 'browse'
 
 /** GitHub 镜像配置：base 为前缀代理地址，空字符串 = 官方直连 */

@@ -137,11 +137,3 @@ pub struct HistoryEntry {
     pub magnet: String,
     pub time: u64,
 }
-
-/// 更新检测结果（releases/latest 重定向解析）
-#[derive(Debug, Clone, Serialize, Default)]
-pub struct UpdateCheckResult {
-    pub current_version: String,
-    pub latest_version: String,
-    pub has_update: bool,
-}

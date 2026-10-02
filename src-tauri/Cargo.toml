@@ -1,6 +1,6 @@
 [package]
 name = "dhthub"
-version = "0.2.6"
+version = "0.2.7"
 description = "DHThub - 多源磁力链接聚合搜索"
 authors = ["DHThub"]
 edition = "2021"

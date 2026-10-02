@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isTauri } from '../lib/tauri'
 import { checkUpdate, updateChecking } from '../lib/update'
 
-const version = ref('0.2.6')
+const version = ref('0.2.7')
 
 onMounted(async () => {
   if (isTauri) {
@@ -52,8 +52,7 @@ async function openRepo() {
       </div>
       <v-divider class="my-2" />
       <div class="text-caption text-center text-medium-emphasis pa-2">
-        开源项目 · 不包含广告与商业追踪 · 使用前请阅读
-        <a class="text-primary" href="javascript:void(0)" @click="$router.push('/disclaimer')">免责声明</a>
+        开源项目 · 不包含广告与商业追踪
       </div>
     </v-card>
   </div>

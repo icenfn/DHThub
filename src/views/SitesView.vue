@@ -5,6 +5,7 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useSitesStore } from '../stores/sites'
 import { settings, DEFAULT_SUBSCRIBE_URL } from '../stores/settings'
 import { invoke, isTauri } from '../lib/tauri'
+import { httpGetText } from '../lib/http'
 import { mirrorUrl } from '../lib/mirrors'
 import type { SiteConfig } from '../types'
 
@@ -99,10 +100,11 @@ async function doSubscribe() {
     await settings.set('subscribeUrl', url)
     subscribing.value = true
     try {
-      // 拉取时套用选中的 GitHub 镜像前缀，存储仍为规范地址
+      // 拉取走前端 plugin-http（套用选中镜像，显式超时不转圈），存储仍为规范地址
       const mirror = settings.getSelectedMirror()
       const realUrl = mirrorUrl(mirror, url)
-      const sites = await sitesStore.subscribe(realUrl)
+      const text = await httpGetText(realUrl, { timeoutMs: 15000 })
+      const sites = await sitesStore.subscribeFromText(text, url)
       notice(`订阅成功：${sites.length} 个搜索源${mirror.base ? `（经 ${mirror.base}）` : ''}`)
     } finally {
       subscribing.value = false

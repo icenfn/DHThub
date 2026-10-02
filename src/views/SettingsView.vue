@@ -5,7 +5,7 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { settings } from '../stores/settings'
 import { useSitesStore } from '../stores/sites'
 import { invoke, isTauri } from '../lib/tauri'
-import { speedTestMirror, pickFastest, MIRROR_PROBE_URL } from '../lib/mirrors'
+import { speedTestMirror, MIRROR_PROBE_URL } from '../lib/mirrors'
 import { checkUpdate, updateChecking } from '../lib/update'
 import type { GithubMirror, MirrorSpeedResult } from '../types'
 
@@ -19,7 +19,6 @@ const importing = ref(false)
 
 // ---------- GitHub 镜像 ----------
 const mirrors = ref<GithubMirror[]>([])
-const mirrorMode = ref<'manual' | 'auto'>('manual')
 const selectedMirrorId = ref('direct')
 const speeds = ref<Record<string, MirrorSpeedResult>>({})
 const testing = ref(false)
@@ -53,13 +52,6 @@ const mirrorRows = computed<MirrorRow[]>(() =>
     return { ...m, speedChip: chip, testing: testingIds.value.has(m.id) }
   }),
 )
-
-const selectedMirror = computed(() => mirrors.value.find((m) => m.id === selectedMirrorId.value))
-const currentLatency = computed<number | null>(() => {
-  const r = selectedMirror.value ? speeds.value[selectedMirror.value.id] : undefined
-  if (!r || r.error) return null
-  return r.latency ?? null
-})
 
 function notice(msg: string) {
   toast.value = msg
@@ -98,36 +90,23 @@ async function clearSearchHistory() {
 // ---------- GitHub 镜像 ----------
 async function refreshMirrors() {
   mirrors.value = settings.getMirrors()
-  mirrorMode.value = settings.get('githubMirrorMode')
   selectedMirrorId.value = settings.get('githubMirrorId')
 }
 
-async function onMirrorModeChange(v: 'manual' | 'auto') {
-  mirrorMode.value = v
-  await settings.setMirrorMode(v)
-  if (v === 'auto') {
-    notice('正在测速所有镜像并自动选择最快…')
-    await runSpeedTest(true)
-  } else {
-    notice('已切换为手动选择')
-  }
-}
-
 async function selectMirror(m: GithubMirror) {
-  if (mirrorMode.value !== 'manual') return
   selectedMirrorId.value = m.id
   await settings.selectMirror(m.id)
   notice(`已切换：${mirrorLabel(m)}`)
 }
 
 /** 并发测速全部镜像，单项完成立即刷新延迟显示（单项独立超时，永不挂起） */
-async function runSpeedTest(autoPick = false) {
+async function runSpeedTest() {
   if (testing.value) return
   testing.value = true
   speeds.value = {}
   testingIds.value = new Set(mirrors.value.map((m) => m.id))
   try {
-    const results = await Promise.all(
+    await Promise.all(
       mirrors.value.map(async (m) => {
         const r = await speedTestMirror(m)
         // 单项完成立即更新对应行
@@ -141,20 +120,8 @@ async function runSpeedTest(autoPick = false) {
     const list = mirrors.value
       .map((m) => speeds.value[m.id])
       .filter((r): r is MirrorSpeedResult => !!r)
-    if (autoPick || mirrorMode.value === 'auto') {
-      const best = pickFastest(list)
-      if (best) {
-        selectedMirrorId.value = best.id
-        await settings.selectMirror(best.id)
-        const bm = mirrors.value.find((m) => m.id === best.id)
-        notice(`已自动选择最快镜像：${mirrorLabel(bm ?? best)}（${best.latency}ms）`)
-      } else {
-        notice('测速完成，但所有镜像均不可用')
-      }
-    } else {
-      const ok = list.filter((r) => r.latency != null).length
-      notice(`测速完成：${ok}/${list.length} 个镜像可用`)
-    }
+    const ok = list.filter((r) => r.latency != null).length
+    notice(`测速完成：${ok}/${list.length} 个镜像可用`)
   } finally {
     testing.value = false
     testingIds.value = new Set()
@@ -335,48 +302,19 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
                 size="small"
                 prepend-icon="mdi-speedometer"
                 :loading="testing"
-                @click="runSpeedTest(false)"
+                @click="runSpeedTest"
               >
                 全部测速
               </v-btn>
             </template>
           </v-card-item>
 
-          <!-- 选择模式 -->
-          <v-card-text class="pt-0">
-            <div class="d-flex align-center ga-2 flex-wrap">
-              <span class="text-subtitle-2 text-medium-emphasis">选择方式</span>
-              <v-chip
-                :variant="mirrorMode === 'manual' ? 'flat' : 'outlined'"
-                color="primary"
-                size="small"
-                @click="onMirrorModeChange('manual')"
-              >
-                手动选择
-              </v-chip>
-              <v-chip
-                :variant="mirrorMode === 'auto' ? 'flat' : 'outlined'"
-                color="primary"
-                size="small"
-                @click="onMirrorModeChange('auto')"
-              >
-                自动选最快
-              </v-chip>
-              <v-spacer />
-              <span v-if="selectedMirror" class="text-caption text-medium-emphasis">
-                当前：<strong class="text-primary">{{ mirrorLabel(selectedMirror) }}</strong>
-                <span v-if="currentLatency != null" class="ml-1">· {{ currentLatency }}ms</span>
-              </span>
-            </div>
-          </v-card-text>
-
           <!-- 镜像列表：仅展示链接；直连行保留「直连」标签，其余不加标签 -->
           <v-list density="compact" class="px-2 pb-2">
             <v-list-item
               v-for="row in mirrorRows"
               :key="row.id"
-              :active="mirrorMode === 'manual' && selectedMirrorId === row.id"
-              :disabled="mirrorMode === 'auto'"
+              :active="selectedMirrorId === row.id"
               rounded="xl"
               class="mb-1"
               @click="selectMirror(row)"
@@ -488,23 +426,6 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           <v-card-text class="text-body-2 font-family-monospace text-caption">
             {{ subscribeUrl || '未设置' }}
           </v-card-text>
-        </v-card>
-
-        <!-- 关于与法律 -->
-        <v-card>
-          <v-card-item>
-            <template #prepend>
-              <v-avatar color="success-container" variant="flat" rounded="lg">
-                <v-icon icon="mdi-information-outline" color="on-success-container" />
-              </v-avatar>
-            </template>
-            <v-card-title class="text-subtitle-1 font-weight-bold">关于与法律</v-card-title>
-          </v-card-item>
-          <v-list density="compact">
-            <v-list-item prepend-icon="mdi-shield-check-outline" title="使用协议" @click="$router.push('/agreement')" />
-            <v-list-item prepend-icon="mdi-file-document-outline" title="免责声明" @click="$router.push('/disclaimer')" />
-            <v-list-item prepend-icon="mdi-github" title="GitHub 仓库" subtitle="github.com/icenfn/DHThub" @click="$router.push('/about')" />
-          </v-list>
         </v-card>
 
         <!-- 添加自定义镜像弹窗（仅需填写链接，名称自动生成） -->

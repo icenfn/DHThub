@@ -231,24 +231,3 @@ fn extract_field(doc: &Html, root: &ElementRef<'_>, spec: Option<&FieldSpec>) ->
         }
     }
 }
-
-/// 供前端兜底的通用文本抓取（订阅源/热词/更新清单）
-pub async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
-    let resp = client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(12))
-        .header(
-            "User-Agent",
-            format!(
-                "DHThub/{env} (+https://github.com/icenfn/DHThub)",
-                env = env!("CARGO_PKG_VERSION")
-            ),
-        )
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    resp.text().await.map_err(|e| format!("读取失败: {e}"))
-}

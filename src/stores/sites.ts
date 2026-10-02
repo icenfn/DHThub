@@ -34,8 +34,9 @@ export const useSitesStore = defineStore('sites', {
       }
     },
 
-    async subscribe(url: string) {
-      const sites = await invoke<SiteConfig[]>('subscribe_sites', { url })
+    /** 订阅：text 为已抓取的订阅 JSON（前端 plugin-http 拉取），Rust 只负责解析持久化 */
+    async subscribeFromText(text: string, url: string) {
+      const sites = await invoke<SiteConfig[]>('subscribe_sites', { text, url })
       this.sites = sites
       this.subscribeUrl = url
       return sites

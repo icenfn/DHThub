@@ -15,7 +15,7 @@ export const MIRROR_PROBE_URL =
 
 /** 热门推荐热词总表（仓库托管，经镜像抓取 + 本地缓存） */
 export const HOTWORDS_URL =
-  'https://raw.githubusercontent.com/icenfn/DHThub/main/hotwords.json'
+  'https://raw.githubusercontent.com/icenfn/DHThub/main/sites/hotwords.json'
 
 /** 单镜像测速超时（毫秒）：覆盖 DNS/建连/响应头全过程 */
 export const SPEED_TEST_TIMEOUT_MS = 6000
@@ -79,14 +79,6 @@ export async function speedTestMirror(mirror: GithubMirror): Promise<MirrorSpeed
 /** 并发测速全部镜像（单项独立超时，互不阻塞） */
 export async function speedTestAll(mirrors: GithubMirror[]): Promise<MirrorSpeedResult[]> {
   return Promise.all(mirrors.map(speedTestMirror))
-}
-
-/** 从测速结果中选取最快可用镜像 */
-export function pickFastest(results: MirrorSpeedResult[]): MirrorSpeedResult | null {
-  const ok = results
-    .filter((r) => r.latency != null && r.latency > 0)
-    .sort((a, b) => (a.latency ?? Infinity) - (b.latency ?? Infinity))
-  return ok[0] ?? null
 }
 
 /** 校验用户输入的自定义镜像前缀，返回规范化后的 base */

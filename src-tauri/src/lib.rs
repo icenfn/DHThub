@@ -4,10 +4,9 @@ mod history;
 mod models;
 mod search;
 mod sites;
-mod update;
 
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
-use models::{SiteConfig, SiteOutcome, UpdateCheckResult};
+use models::SiteConfig;
 use sites::SiteStore;
 use std::time::Duration;
 use tauri::Manager;
@@ -52,9 +51,10 @@ async fn get_sites(state: tauri::State<'_, AppState>) -> Result<Vec<SiteConfig>,
 #[tauri::command]
 async fn subscribe_sites(
     state: tauri::State<'_, AppState>,
+    text: String,
     url: String,
 ) -> Result<Vec<SiteConfig>, String> {
-    state.sites.subscribe(&state.http, &url).await
+    state.sites.subscribe_from_text(&text, &url).await
 }
 
 #[tauri::command]
@@ -114,11 +114,6 @@ async fn import_sites(
 #[tauri::command]
 async fn reset_sites(state: tauri::State<'_, AppState>) -> Result<Vec<SiteConfig>, String> {
     state.sites.reset().await
-}
-
-#[tauri::command]
-async fn fetch_text(state: tauri::State<'_, AppState>, url: String) -> Result<String, String> {
-    search::fetch_text(&state.http, &url).await
 }
 
 // ---------- 搜索 ----------
@@ -189,18 +184,7 @@ async fn clear_all_history(state: tauri::State<'_, AppState>) -> Result<(), Stri
 
 // ---------- 更新 ----------
 
-#[tauri::command]
-async fn check_update(
-    state: tauri::State<'_, AppState>,
-    mirror_base: Option<String>,
-) -> Result<UpdateCheckResult, String> {
-    update::check_update(
-        &state.http,
-        env!("CARGO_PKG_VERSION"),
-        mirror_base.as_deref(),
-    )
-    .await
-}
+// 更新检测已在纯前端实现（src/lib/update.ts，plugin-http fetch releases/latest + snackbar），Rust 侧不再参与
 
 // ---------- 应用启动 ----------
 
@@ -232,13 +216,11 @@ pub fn run() {
             export_sites,
             import_sites,
             reset_sites,
-            fetch_text,
             search_sites,
             add_history,
             get_history,
             clear_history,
             clear_all_history,
-            check_update,
         ])
         .run(tauri::generate_context!())
         .expect("DHThub 启动失败");

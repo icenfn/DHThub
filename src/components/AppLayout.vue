@@ -58,7 +58,7 @@ function go(to: string) {
       />
     </v-list>
     <template #append>
-      <div class="pa-4 text-caption text-medium-emphasis">v0.2.6 · GitHub 发布</div>
+      <div class="pa-4 text-caption text-medium-emphasis">v0.2.7 · GitHub 发布</div>
     </template>
   </v-navigation-drawer>
 

@@ -4,6 +4,7 @@ import { invoke, isTauri } from '../lib/tauri'
 import { useSitesStore } from '../stores/sites'
 import { settings } from '../stores/settings'
 import { mirrorUrl, HOTWORDS_URL } from '../lib/mirrors'
+import { httpGetText } from '../lib/http'
 import type { MagnetItem, SiteOutcome } from '../types'
 import MagnetDetailDialog from '../components/MagnetDetailDialog.vue'
 import StatisticsDialog from '../components/StatisticsDialog.vue'
@@ -103,16 +104,14 @@ function refreshLocalWords() {
   searchHistory.value = [...settings.get('searchHistory')]
 }
 
-/** 从 GitHub 仓库抓取热词总表（经选中镜像），成功后本地缓存；失败用缓存兜底 */
+/** 从 GitHub 仓库抓取热词总表（经选中镜像，plugin-http + 超时），成功后本地缓存；失败用缓存兜底 */
 async function loadHotWords() {
   // 先显示本地缓存，避免空白
   hotWords.value = [...settings.get('hotWords')]
   try {
     const mirror = settings.getSelectedMirror()
     const url = mirrorUrl(mirror, HOTWORDS_URL)
-    const text = isTauri
-      ? await invoke<string>('fetch_text', { url })
-      : await (await fetch(url, { cache: 'no-store' })).text()
+    const text = await httpGetText(url, { timeoutMs: 12000 })
     const list: unknown = JSON.parse(text)
     if (Array.isArray(list) && list.length > 0 && list.every((x) => typeof x === 'string')) {
       hotWords.value = (list as string[]).slice(0, 50)

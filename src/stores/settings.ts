@@ -6,19 +6,15 @@ import { BUILTIN_MIRRORS, deriveMirrorName } from '../lib/mirrors'
 import type { GithubMirror, SettingsExportFile } from '../types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
-export type MirrorMode = 'manual' | 'auto'
 
 export interface SettingsData {
   theme: ThemeMode
   subscribeUrl: string
-  /** 热门推荐热词（仓库 hotwords.json 抓取后的本地缓存） */
+  /** 热门推荐热词（仓库 sites/hotwords.json 抓取后的本地缓存） */
   hotWords: string[]
-  agreedVersion: string | null
   searchHistory: string[]
   /** GitHub 镜像列表（内置 + 自定义） */
   githubMirrors: GithubMirror[]
-  /** 镜像选择方式：手动 / 自动测速选最快 */
-  githubMirrorMode: MirrorMode
   /** 当前选中镜像 id */
   githubMirrorId: string
   /** 自动检测更新：启动时静默检查新版本，发现后提示条提醒 */
@@ -48,10 +44,8 @@ const DEFAULTS: SettingsData = {
   theme: 'system',
   subscribeUrl: DEFAULT_SUBSCRIBE_URL,
   hotWords: DEFAULT_HOT_WORDS,
-  agreedVersion: null,
   searchHistory: [],
   githubMirrors: BUILTIN_MIRRORS.map((m) => ({ ...m })),
-  githubMirrorMode: 'manual',
   githubMirrorId: 'direct',
   autoCheckUpdate: true,
 }
@@ -112,9 +106,6 @@ class SettingsStore {
     }
     if (typeof merged.subscribeUrl !== 'string') {
       merged.subscribeUrl = DEFAULT_SUBSCRIBE_URL
-    }
-    if (merged.githubMirrorMode !== 'manual' && merged.githubMirrorMode !== 'auto') {
-      merged.githubMirrorMode = 'manual'
     }
     // 镜像：内置 + 合法自定义，去重
     const seen = new Set<string>()
@@ -214,11 +205,6 @@ class SettingsStore {
     await this.persist()
   }
 
-  async setMirrorMode(mode: MirrorMode) {
-    this.data.githubMirrorMode = mode
-    await this.persist()
-  }
-
   /** 添加自定义镜像（base 已校验；名称由地址自动推导，无需用户填写） */
   async addMirror(base: string): Promise<GithubMirror> {
     const v = base.trim()
@@ -278,7 +264,7 @@ class SettingsStore {
     const merged = this.merge({ ...this.data, ...incoming } as Partial<SettingsData>)
     // 统计实际导入的字段数
     let imported = 0
-    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorMode', 'githubMirrorId', 'autoCheckUpdate'] as const).forEach(
+    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorId', 'autoCheckUpdate'] as const).forEach(
       (k) => {
         if (incoming[k] !== undefined) imported++
       },

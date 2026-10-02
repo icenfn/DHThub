@@ -41,15 +41,14 @@ impl SiteStore {
         Ok(build_merged(&data))
     }
 
-    /// 拉取订阅源并替换 subscribed 列表
-    pub async fn subscribe(
+    /// 导入订阅文本并替换 subscribed 列表（网络请求由前端 plugin-http 完成）
+    pub async fn subscribe_from_text(
         &self,
-        client: &reqwest::Client,
+        text: &str,
         url: &str,
     ) -> Result<Vec<SiteConfig>, String> {
-        let text = crate::search::fetch_text(client, url).await?;
         let parsed: Value =
-            serde_json::from_str(&text).map_err(|e| format!("订阅源 JSON 解析失败: {e}"))?;
+            serde_json::from_str(text).map_err(|e| format!("订阅源 JSON 解析失败: {e}"))?;
 
         let mut list: Vec<SiteConfig> = if parsed.is_array() {
             serde_json::from_value(parsed).map_err(|e| format!("站点列表格式错误: {e}"))?

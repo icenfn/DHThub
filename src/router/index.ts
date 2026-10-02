@@ -18,9 +18,6 @@ const router = createRouter({
     },
     // 设置页为独立页面框架（自带返回顶栏，不走主框架）
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: '设置' } },
-    // 无框架页面（自带返回与内边距）
-    { path: '/agreement', name: 'agreement', component: () => import('../views/AgreementView.vue'), meta: { title: '使用协议' } },
-    { path: '/disclaimer', name: 'disclaimer', component: () => import('../views/DisclaimerView.vue'), meta: { title: '免责声明' } },
   ],
 })
 

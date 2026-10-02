@@ -1,24 +1,56 @@
-name: Release
+name: Build and Release
 
-# 打 tag v*（如 v0.1.0）或手动触发时，自动构建并发布 Linux / Windows / Android 安装包
+# 手动触发：从 CHANGELOG.md 提取最新版本号与发布说明，自动构建
+# Linux(deb/rpm) / Windows(nsis) / Android(arm64+armv7) 并汇总发布（参考 delin_ocr 方案）
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
-env:
-  # 更新签名（可选）：首次运行 `npx tauri signer generate -w ~/.dhthub/tauri.key`
-  # 后将私钥写入仓库 Secrets：TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+permissions:
+  contents: write
 
 jobs:
-  release-linux:
-    name: build linux (deb / rpm)
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract_version.outputs.version }}
+      body: ${{ steps.extract_version.outputs.body }}
+      should_release: ${{ steps.check_tag.outputs.exists == 'false' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取所有历史以便检查标签
+
+      - name: Extract latest version from CHANGELOG
+        id: extract_version
+        run: |
+          content=$(cat CHANGELOG.md)
+          version=$(echo "$content" | grep -m 1 '^## ' | sed 's/## //')
+          body=$(echo "$content" | awk -v version="$version" '
+            BEGIN { capture = 0 }
+            $0 ~ "^## " version { capture = 1; next }
+            capture == 1 && $0 ~ "^## " { exit }
+            capture == 1 { print }
+          ')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$body" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.extract_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-linux:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -32,33 +64,41 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install Linux 构建依赖
+      - name: Install Linux build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
             patchelf libxdo-dev libssl-dev build-essential curl wget file
 
-      - name: 前端依赖
-        run: npm install --no-audit --no-fund
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
 
-      - name: 构建并发布（tauri-action 自动签名/生成 latest.json/上传 Release）
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Linux bundles (deb / rpm)
+        run: npm run tauri build -- --bundles deb,rpm
+
+      - name: Rename artifacts
+        id: rename-linux
+        run: |
+          DEB=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
+          RPM=$(find src-tauri/target/release/bundle/rpm -name "*.rpm" | head -1)
+          mv "$DEB" "$(dirname "$DEB")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-amd64.deb"
+          mv "$RPM" "$(dirname "$RPM")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-x86_64.rpm"
+          echo "deb=$(dirname "$DEB")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-amd64.deb" >> $GITHUB_OUTPUT
+          echo "rpm=$(dirname "$RPM")/DHThub-${{ needs.prepare-release.outputs.version }}-linux-x86_64.rpm" >> $GITHUB_OUTPUT
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'DHThub ${{ github.ref_name }}'
-          releaseBody: '请查看下方资产列表下载对应平台安装包。'
-          releaseDraft: false
-          force: true
-          prerelease: false
-          args: --bundles deb,rpm
+          name: linux-release
+          path: |
+            ${{ steps.rename-linux.outputs.deb }}
+            ${{ steps.rename-linux.outputs.rpm }}
+          if-no-files-found: error
 
-  release-windows:
-    name: build windows (nsis)
+  build-windows:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -72,33 +112,40 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: 前端依赖
-        run: npm install --no-audit --no-fund
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
 
-      - name: 构建并发布
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Windows installer (nsis)
+        run: npm run tauri build -- --bundles nsis
+
+      - name: Rename installer
+        id: rename-installer
+        shell: pwsh
+        run: |
+          $INSTALLER = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*.exe" | Select-Object -First 1
+          $NEW = "DHThub-${{ needs.prepare-release.outputs.version }}-windows-x64-setup.exe"
+          $NEW_PATH = Join-Path (Split-Path $INSTALLER) $NEW
+          Move-Item -Path $INSTALLER -Destination $NEW_PATH
+          echo "installer_path=$NEW_PATH" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'DHThub ${{ github.ref_name }}'
-          releaseDraft: false
-          force: true
-          prerelease: false
-          args: --bundles nsis
+          name: windows-installer
+          path: ${{ steps.rename-installer.outputs.installer_path }}
+          if-no-files-found: error
 
-  release-android:
-    name: build android (apk, arm64 + armv7)
+  build-android:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     env:
       # secrets 不允许在 if: 中使用，先注入 job 级 env 供 if 判断
       ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rust toolchain + Android 交叉编译目标
+      - name: Rust toolchain + Android 交叉编译目标（仅 arm64 + armv7，不编译 x86）
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi
@@ -133,17 +180,14 @@ jobs:
           ndk-version: r26d
           link-to-sdk: true
 
-      - name: 前端依赖
-        run: npm install --no-audit --no-fund
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
 
       - name: 初始化 Android 工程
         run: npx tauri android init
 
       - name: 仅保留 arm64 / armv7 ABI（apk 不编译 x86 / x86_64）
         run: |
-          # Tauri 2.12 的 rust gradle 插件通过 findProperty 读取
-          # abiList / archList / targetList（默认硬编码 4 个 ABI），
-          # 在 root 与 app 工程的 gradle.properties 写入覆盖值，只编译 arm64 + arm。
           for f in src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties; do
             touch "$f"
             printf '\n# DHThub: 只构建 arm64-v8a + armeabi-v7a\nabiList=arm64-v8a,armeabi-v7a\narchList=arm64,arm\ntargetList=aarch64,armv7\n' >> "$f"
@@ -156,9 +200,8 @@ jobs:
           echo "图标覆盖完成："
           find src-tauri/gen/android/app/src/main/res/ -name "ic_launcher*" | sort
 
-      - name: 注入 APK 安装权限（更新检测自动安装用）
+      - name: 注入 APK 安装权限
         run: |
-          MANIFEST=src-tauri/gen/android/app/src/main/AndroidManifest.xml
           python3 - <<'EOF'
           import re
           p = 'src-tauri/gen/android/app/src/main/AndroidManifest.xml'
@@ -173,13 +216,12 @@ jobs:
               f.write(c)
           EOF
 
-      - name: MainActivity 预留系统栏 inset（避免内容被状态栏/导航栏遮挡）
+      - name: MainActivity 预留系统栏 inset
         run: |
           python3 - <<'PYEOF'
           import os
           p = 'src-tauri/gen/android/app/src/main/java/com/dhthub/app/MainActivity.kt'
           assert os.path.exists(p), 'MainActivity.kt not found'
-          # TauriActivity 由 tauri android init 生成在应用同包（com.dhthub.app），无需 import
           code = '\n'.join([
               'package com.dhthub.app',
               '',
@@ -188,7 +230,6 @@ jobs:
               'class MainActivity : TauriActivity() {',
               '    override fun onCreate(savedInstanceState: Bundle?) {',
               '        super.onCreate(savedInstanceState)',
-              '        // 预留顶部状态栏与底部导航栏，避免 WebView 内容被系统栏遮挡（edge-to-edge 适配）',
               '        window.decorView.setOnApplyWindowInsetsListener { v: android.view.View, insets: android.view.WindowInsets ->',
               '            if (android.os.Build.VERSION.SDK_INT >= 30) {',
               '                val bars = insets.getInsets(',
@@ -228,7 +269,7 @@ jobs:
             echo "storePassword=android" >> src-tauri/gen/android/keystore.properties
           fi
 
-      - name: Gradle 签名接线（tauri 2.12 模板不自动读 keystore.properties，按官方文档注入）
+      - name: Gradle 签名接线
         run: |
           python3 - <<'PYEOF'
           p = 'src-tauri/gen/android/app/build.gradle.kts'
@@ -257,46 +298,50 @@ jobs:
           print('gradle signing wired OK')
           PYEOF
 
-      - name: 构建 APK（split-per-abi，双架构）
+      - name: 构建 APK（split-per-abi，仅输出 arm64 / armv7 有效包）
         run: npx tauri android build --apk --split-per-abi
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 上传 APK 产物
+      - name: 改名 arm64 / armv7 APK 并上传（x86 空壳不发布）
+        run: |
+          V=${{ needs.prepare-release.outputs.version }}
+          cd src-tauri/gen/android/app/build/outputs/apk
+          mv arm64/release/app-arm64-release.apk arm64/release/DHThub-$V-android-arm64.apk
+          mv arm/release/app-arm-release.apk arm/release/DHThub-$V-android-armv7.apk
+          echo "arm64=arm64/release/DHThub-$V-android-arm64.apk" >> $GITHUB_OUTPUT
+          echo "armv7=arm/release/DHThub-$V-android-armv7.apk" >> $GITHUB_OUTPUT
+
+      - name: Upload Android APKs
         uses: actions/upload-artifact@v4
         with:
-          name: android-apks
+          name: android-release
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/arm/release/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/arm64/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/arm64/release/DHThub-${{ needs.prepare-release.outputs.version }}-android-arm64.apk
+            src-tauri/gen/android/app/build/outputs/apk/arm/release/DHThub-${{ needs.prepare-release.outputs.version }}-android-armv7.apk
           if-no-files-found: error
 
-  publish:
-    name: 汇总发布 Android 资产到 GitHub Release
-    needs: [release-linux, release-windows, release-android]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
+  create-release:
+    needs: [prepare-release, build-linux, build-windows, build-android]
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: android-apks
-          path: android-apks
+          path: artifacts
 
-      - name: 上传 APK 到 Release（arm64 + arm，x86 空壳不发布）
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.version }}
+          name: ${{ needs.prepare-release.outputs.version }}
+          body: ${{ needs.prepare-release.outputs.body }}
+          files: |
+            artifacts/linux-release/*
+            artifacts/windows-installer/*
+            artifacts/android-release/*
+          draft: false
+          prerelease: false
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd android-apks
-          RELEASE_ID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/icenfn/DHThub/releases/tags/${{ github.ref_name }}" | \
-            python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-          for apk in arm64/release/app-arm64-release.apk arm/release/app-arm-release.apk; do
-            curl -sL -X POST \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Content-Type: application/vnd.android.package-archive" \
-              --data-binary "@$apk" \
-              "https://uploads.github.com/repos/icenfn/DHThub/releases/$RELEASE_ID/assets?name=$(basename "$apk")" | \
-              python3 -c 'import json,sys; d=json.load(sys.stdin); print("uploaded:", d.get("name"))'
-          done
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
