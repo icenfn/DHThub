@@ -5,12 +5,13 @@
 
 - 极致的体验：数据本地存储、无需账号、无广告 SDK
 - 极少的权限：权限仅网络、剪贴板、打开外部链接、安装 APK（Android）
-- 更新及时：无需访问github或其他应用市场即可获取最新版本
+- 更新及时：内置自动检测更新（GitHub Release + 镜像），snackbar 提示新版本
 
 # 技术栈
 
+- Tauri 2.12（Rust）
 - Vue 3.5
-- Vuetify 4.2
+- Vuetify 4.2（Material Design 3）
 - Pinia
 - Vue Router
 - Vite 8
@@ -22,18 +23,27 @@
 ```
 DHThub/
 ├── sites/
-│   └── default.json          # 默认订阅源（CSS 选择器 schema）
+│   ├── default.json          # 默认订阅源（CSS 选择器 schema）
+│   └── hotwords.json         # 热门推荐热词总表（首页热词，经镜像抓取 + 本地缓存）
 ├── src/                      # Vue3 前端
-│   ├── views/                # Home / Sites / History / Settings / About / 协议 / 免责
-│   ├── components/           # 磁力详情 / 搜索统计 / 更新弹窗
+│   ├── views/                # Home / SearchResults / Sites / History / Settings / About
+│   ├── components/           # AppLayout（滑动窗口框架）/ 磁力详情 / 搜索统计
 │   ├── stores/               # 站点状态(Pinia) + 设置持久化
-│   └── lib/tauri.ts          # Tauri 环境检测与 IPC 封装（浏览器预览降级）
+│   └── lib/                  # tauri / http（plugin-http 请求）/ update（更新检测）/ mirrors
 ├── src-tauri/
-│   ├── src/                  # Rust：search / sites / history / update
-│   ├── capabilities/         # 桌面 / 移动端权限
+│   ├── src/                  # Rust：search / sites / history
+│   ├── capabilities/         # 桌面 / 移动端权限（http 允许任意 http/https）
 │   └── tauri.conf.json
 └── .github/workflows/release.yml
 ```
+
+# 功能
+
+- 首页为滑动窗口，内嵌「搜索 / 站点 / 历史」3 页，手机左右滑动切换，tab 自动跟随
+- 搜索结果在独立页面展示：并发聚合、过滤、排序、分页、搜索统计、磁力详情
+- 站点管理：仓库订阅源导入（JSON / 一键订阅）、自定义站点、默认引擎
+- GitHub 镜像：内置直连 + gh-proxy.com，可自定义添加；用于更新检测、订阅拉取、热词拉取
+- 自动检测更新：启动时静默检查 GitHub Release，新版本通过 snackbar 提示
 
 # 本地开发
 
@@ -65,21 +75,19 @@ cargo tauri android build --apk --split-per-abi
 
 ## 发布流程（GitHub Actions）
 
-1. 推送 tag 触发发布：
-   ```bash
-   git tag v0.2.5 && git push origin v0.2.5
-   ```
-2. 或在 Actions 页手动触发 `workflow_dispatch`。
-3. 产物自动上传 GitHub Release：deb / rpm / nsis / APK（arm64 / armv7）。
+1. 更新 `CHANGELOG.md` 顶部为最新版本（格式 `## vX.Y.Z`），推送到 main。
+2. 在 Actions 页手动触发 `Build and Release`（`workflow_dispatch`）。
+3. 工作流读取 CHANGELOG 生成版本号与发布说明，自动构建并发布：
+   deb / rpm / Windows 安装包 / Android APK（arm64 / armv7），产物统一命名 `DHThub-{版本}-{平台}-{架构}`。
 
 ### 可选配置
 
 | Secret | 用途 |
 |---|---|
 | `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 桌面更新签名（生成：`npx tauri signer generate -w ~/.dhthub/tauri.key`） |
-| `ANDROID_KEY_BASE64` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` | Android release 签名（生成：`keytool -genkeypair -v -keystore release.keystore -alias dhthub -keyalg RSA -keysize 2048 -validity 10000`，再 `base64 release.keystore`） |
+| `ANDROID_KEY_BASE64` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` | Android release 签名（生成：`keytool -genkeypair -v -keystore release.keystore -alias dhthub -keyalg RSA -keysize 2044 -validity 10000`，再 `base64 release.keystore`） |
 
-不配置上述密钥时：桌面端跳过自动更新通道（手动下载安装包）、Android 自动使用生成的 debug 签名打包（可正常安装；正式对外发布建议配置正式密钥）。
+不配置上述密钥时：Android 自动使用生成的 debug 签名打包（可正常安装；正式对外发布建议配置正式密钥）。
 
 # 免责声明
 

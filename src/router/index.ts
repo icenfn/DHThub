@@ -1,23 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '../components/AppLayout.vue'
-import HomeView from '../views/HomeView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
-      // 主页面框架：搜索 / 站点 / 历史 / 关于
+      // 首页框架：应用栏（标题随 tab 变化 + 设置按钮）+ 滑动窗口内嵌 3 页（搜索/站点/历史）
       path: '/',
       component: AppLayout,
-      children: [
-        { path: '', name: 'home', component: HomeView, meta: { title: '搜索' } },
-        { path: 'sites', name: 'sites', component: () => import('../views/SitesView.vue'), meta: { title: '站点管理' } },
-        { path: 'history', name: 'history', component: () => import('../views/HistoryView.vue'), meta: { title: '历史记录' } },
-        { path: 'about', name: 'about', component: () => import('../views/AboutView.vue'), meta: { title: '关于' } },
-      ],
     },
-    // 设置页为独立页面框架（自带返回顶栏，不走主框架）
+    // 搜索结果独立页面（自带返回顶栏，不走首页框架）
+    { path: '/search', name: 'search', component: () => import('../views/SearchResultsView.vue'), meta: { title: '搜索结果' } },
+    // 设置页独立框架
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: '设置' } },
+    // 关于页独立框架
+    { path: '/about', name: 'about', component: () => import('../views/AboutView.vue'), meta: { title: '关于' } },
   ],
 })
 

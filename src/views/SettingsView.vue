@@ -228,7 +228,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
       <div class="px-4 px-sm-8 py-4 mx-auto" style="max-width: 1040px">
         <!-- 页头操作 -->
         <div class="d-flex align-center mt-2 mb-4 flex-wrap ga-2">
-          <div class="text-caption text-medium-emphasis mr-auto">外观、GitHub 镜像与数据管理</div>
+          <div class="text-caption text-medium-emphasis mr-auto">通用、GitHub 镜像与数据管理</div>
           <v-btn
             color="primary"
             variant="tonal"
@@ -247,40 +247,33 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           </v-btn>
         </div>
 
-        <!-- 外观 -->
+        <!-- 通用：外观 + 自动检测更新 -->
         <v-card class="mb-4">
           <v-card-item>
             <template #prepend>
               <v-avatar color="primary-container" variant="flat" rounded="lg">
-                <v-icon icon="mdi-theme-light-dark" color="on-primary-container" />
+                <v-icon icon="mdi-cog-outline" color="on-primary-container" />
               </v-avatar>
             </template>
-            <v-card-title class="text-subtitle-1 font-weight-bold">外观</v-card-title>
-            <v-card-subtitle class="text-caption">主题模式，跟随系统可自动适配深色</v-card-subtitle>
+            <v-card-title class="text-subtitle-1 font-weight-bold">通用</v-card-title>
+            <v-card-subtitle class="text-caption">主题模式与自动检测更新</v-card-subtitle>
           </v-card-item>
           <v-card-text>
+            <div class="text-subtitle-2 font-weight-bold mb-1">外观</div>
             <v-radio-group v-model="themeMode" inline hide-details @update:model-value="saveTheme(themeMode)">
               <v-radio label="跟随系统" value="system" color="primary" />
               <v-radio label="浅色" value="light" color="primary" />
               <v-radio label="深色" value="dark" color="primary" />
             </v-radio-group>
-          </v-card-text>
-        </v-card>
-
-        <!-- 更新 -->
-        <v-card class="mb-4">
-          <v-card-item>
-            <template #prepend>
-              <v-avatar color="info-container" variant="flat" rounded="lg">
-                <v-icon icon="mdi-update" color="on-info-container" />
-              </v-avatar>
-            </template>
-            <v-card-title class="text-subtitle-1 font-weight-bold">更新</v-card-title>
-            <v-card-subtitle class="text-caption">启动时静默检查 GitHub Release，发现新版本后通过提示条提醒</v-card-subtitle>
-            <template #append>
+            <v-divider class="my-3" />
+            <div class="d-flex align-center">
+              <div class="mr-auto">
+                <div class="text-subtitle-2 font-weight-bold">自动检测更新</div>
+                <div class="text-caption text-medium-emphasis">启动时静默检查 GitHub Release，发现新版本后通过提示条提醒</div>
+              </div>
               <v-switch :model-value="autoCheck" color="primary" hide-details @update:model-value="saveAutoCheck(!!$event)" />
-            </template>
-          </v-card-item>
+            </div>
+          </v-card-text>
         </v-card>
 
         <!-- GitHub 镜像 -->
@@ -426,6 +419,24 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           <v-card-text class="text-body-2 font-family-monospace text-caption">
             {{ subscribeUrl || '未设置' }}
           </v-card-text>
+        </v-card>
+
+        <!-- 关于 -->
+        <v-card class="mb-4">
+          <v-card-item>
+            <template #prepend>
+              <v-avatar color="success-container" variant="flat" rounded="lg">
+                <v-icon icon="mdi-information-outline" color="on-success-container" />
+              </v-avatar>
+            </template>
+            <v-card-title class="text-subtitle-1 font-weight-bold">关于</v-card-title>
+            <v-card-subtitle class="text-caption">版本信息与项目主页</v-card-subtitle>
+            <template #append>
+              <v-btn variant="tonal" size="small" color="secondary" prepend-icon="mdi-open-in-new" @click="$router.push('/about')">
+                查看详情
+              </v-btn>
+            </template>
+          </v-card-item>
         </v-card>
 
         <!-- 添加自定义镜像弹窗（仅需填写链接，名称自动生成） -->
