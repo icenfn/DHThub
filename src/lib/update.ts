@@ -1,12 +1,11 @@
-// 更新检测（纯前端）：请求 GitHub releases/latest（经选中镜像）→ 解析最新版本号，
+// 更新检测（纯前端）：直连 GitHub releases/latest → 解析最新版本号，
 // 结果用全局 snackbar 提示（v-snackbar，无弹窗）；网络走 plugin-http + 显式超时，不转圈。
 
 import { ref } from 'vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { isTauri } from './tauri'
 import { httpGetRaw } from './http'
-import { settings } from '../stores/settings'
-import { mirrorUrl } from './mirrors'
+
 
 export const RELEASES_PAGE_URL = 'https://github.com/icenfn/DHThub/releases/latest'
 export const UPDATE_TIMEOUT_MS = 15000
@@ -46,10 +45,9 @@ export async function checkUpdate(): Promise<void> {
   if (updateChecking.value) return
   updateChecking.value = true
   try {
-    const mirror = settings.getSelectedMirror()
-    const url = mirrorUrl(mirror, RELEASES_PAGE_URL)
-    const res = await httpGetRaw(url, { timeoutMs: UPDATE_TIMEOUT_MS })
-    const finalUrl = res.url || url
+    // 直连 GitHub，不套用镜像（releases/latest 会 302 到 tag 页面，plugin-http 自动跟随）
+    const res = await httpGetRaw(RELEASES_PAGE_URL, { timeoutMs: UPDATE_TIMEOUT_MS })
+    const finalUrl = res.url || RELEASES_PAGE_URL
     const text = await res.text()
     const latest = extractVersion(text, finalUrl)
     const current = await getCurrentVersion()

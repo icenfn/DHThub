@@ -112,9 +112,9 @@ async function doSubscribe() {
   })
 }
 
-async function toggleEnabled(site: SiteConfig) {
+async function toggleEnabled(site: SiteConfig, v: boolean) {
   await run(async () => {
-    await sitesStore.setEnabled(site.id!, !site.enabled)
+    await sitesStore.setEnabled(site.id!, v)
   })
 }
 
@@ -127,7 +127,7 @@ async function setDefault(site: SiteConfig) {
 async function removeSite(site: SiteConfig) {
   await run(async () => {
     await sitesStore.remove(site.id!)
-    notice(site.is_custom ? '已删除自定义站点' : '已停用该站点（订阅源站点不可删除）')
+    notice(site.is_custom ? '已删除自定义站点' : '已删除搜索源')
   })
 }
 
@@ -225,11 +225,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
+  <div class="px-3 px-sm-6 pt-2 pb-3 mx-auto" style="max-width: 1040px">
     <div class="d-flex align-center mt-2 mb-4">
       <div>
-        <div class="text-h6 font-weight-bold">站点管理</div>
-        <div class="text-caption text-medium-emphasis">订阅源 {{ subscribedCount }} 个 · 自定义 {{ customCount }} 个</div>
+        <div class="text-h6 font-weight-bold">订阅源</div>
+        <div class="text-caption text-medium-emphasis">共 {{ sitesStore.sites.length }} 个搜索源 · 订阅 {{ subscribedCount }} · 自定义 {{ customCount }}</div>
       </div>
       <v-spacer />
       <v-btn variant="tonal" color="secondary" prepend-icon="mdi-import" size="small" @click="doImport">导入</v-btn>
@@ -283,7 +283,7 @@ onMounted(async () => {
           </v-avatar>
         </template>
         <v-card-title class="text-subtitle-1 font-weight-bold">搜索源列表</v-card-title>
-        <v-card-subtitle class="text-caption">开启的站点才会参与搜索；点击 ☆ 设为默认引擎</v-card-subtitle>
+        <v-card-subtitle class="text-caption">开启的站点才会参与搜索；点击 ☆ 设为默认引擎；均可删除</v-card-subtitle>
         <template #append>
           <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" size="small" @click="openAdd">
             添加自定义
@@ -331,11 +331,11 @@ onMounted(async () => {
                 @click="openEdit(site)"
               />
               <v-btn
-                :icon="site.is_custom ? 'mdi-delete-outline' : 'mdi-power'"
+                icon="mdi-delete-outline"
                 size="small"
                 variant="text"
-                :color="site.is_custom ? 'error' : 'grey'"
-                :title="site.is_custom ? '删除' : '停用'"
+                color="error"
+                title="删除搜索源"
                 @click="removeSite(site)"
               />
               <v-switch
@@ -343,7 +343,7 @@ onMounted(async () => {
                 color="primary"
                 hide-details
                 density="compact"
-                @update:model-value="toggleEnabled(site)"
+                @update:model-value="toggleEnabled(site, !!$event)"
               />
             </div>
           </template>

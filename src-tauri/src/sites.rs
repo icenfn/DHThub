@@ -70,11 +70,10 @@ impl SiteStore {
         data.subscribe_url = url.to_string();
         data.subscribed = list.clone();
         data.subscribed_at = Some(Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
-        // 清理已不存在的订阅站开关
+        // 订阅即默认启用：清空这些站点的开关覆盖，回落到源内 state（true）
         let ids: std::collections::HashSet<String> =
             list.iter().filter_map(|s| s.id.clone()).collect();
-        data.enabled
-            .retain(|k, _| ids.contains(k) || !k.starts_with('s'));
+        data.enabled.retain(|k, _| !ids.contains(k));
         self.save(&data).await?;
         drop(data);
         Ok(build_merged(&*self.data.lock().await))
@@ -133,14 +132,12 @@ impl SiteStore {
         Ok(merged)
     }
 
-    /// 删除站点（订阅源站点删除 = 关闭开关；自定义站点删除 = 移除）
+    /// 删除站点：订阅源与自定义站点均直接移除
     pub async fn delete_site(&self, id: &str) -> Result<Vec<SiteConfig>, String> {
         let mut data = self.data.lock().await;
-        if id.starts_with('c') {
-            data.custom.retain(|s| s.id.as_deref() != Some(id));
-        } else {
-            data.enabled.insert(id.to_string(), false);
-        }
+        data.subscribed.retain(|s| s.id.as_deref() != Some(id));
+        data.custom.retain(|s| s.id.as_deref() != Some(id));
+        data.enabled.remove(id);
         if data.default_id.as_deref() == Some(id) {
             data.default_id = None;
         }
@@ -185,6 +182,13 @@ impl SiteStore {
             data.custom = incoming.custom;
         }
         data.enabled.extend(incoming.enabled);
+        // 订阅源站点导入后默认启用（清空开关覆盖回落 state）
+        let ids: std::collections::HashSet<String> = data
+            .subscribed
+            .iter()
+            .filter_map(|s| s.id.clone())
+            .collect();
+        data.enabled.retain(|k, _| !ids.contains(k));
         if incoming.default_id.is_some() {
             data.default_id = incoming.default_id;
         }

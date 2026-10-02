@@ -12,7 +12,8 @@ import SitesView from '../views/SitesView.vue'
 import HistoryView from '../views/HistoryView.vue'
 
 const router = useRouter()
-const titles = ['搜索', '站点管理', '历史记录']
+const titles = ['搜索', '订阅源', '历史记录']
+const icons = ['mdi-magnify', 'mdi-antenna', 'mdi-history']
 const tab = ref(0)
 const swiperRef = ref<SwiperInterface | null>(null)
 
@@ -45,7 +46,15 @@ function goTab(i: number) {
       </template>
     </v-app-bar>
 
-    <v-tabs v-model="tab" color="primary" grow density="compact" @update:model-value="goTab(Number($event))">
+    <!-- 桌面端顶部 tab -->
+    <v-tabs
+      v-model="tab"
+      color="primary"
+      grow
+      density="compact"
+      class="d-none d-sm-flex"
+      @update:model-value="goTab(Number($event))"
+    >
       <v-tab v-for="(t, i) in titles" :key="i">{{ t }}</v-tab>
     </v-tabs>
 
@@ -68,6 +77,21 @@ function goTab(i: number) {
         </z-swiper-item>
       </z-swiper>
     </div>
+
+    <!-- 手机端底部 tab 栏 -->
+    <v-bottom-navigation
+      v-model="tab"
+      grow
+      mandatory
+      class="d-sm-none"
+      style="position: static; width: 100%"
+      @update:model-value="goTab(Number($event))"
+    >
+      <v-btn v-for="(t, i) in titles" :key="i">
+        <v-icon :icon="icons[i]" />
+        <span>{{ t }}</span>
+      </v-btn>
+    </v-bottom-navigation>
   </div>
 </template>
 

@@ -75,91 +75,102 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
-    <v-sheet rounded="xl" class="pa-3 pa-sm-4" elevation="1" color="surface" border="sm">
-      <div class="text-subtitle-1 font-weight-bold mb-2">多源磁力搜索</div>
-      <div class="d-flex flex-column flex-sm-row ga-2">
-        <v-text-field
-          v-model="keyword"
-          label="输入关键词，例如：电影名 / 剧集 / 游戏"
-          variant="solo"
-          rounded="lg"
-          hide-details
-          clearable
-          density="comfortable"
-          @keyup.enter="doSearch()"
-        />
-        <div class="d-flex ga-2">
-          <v-select
-            v-model="engineId"
-            :items="[
-              { title: '全部启用的搜索源', value: null },
-              ...sitesStore.enabledSites.map((s) => ({ title: s.name, value: s.id })),
-            ]"
-            item-title="title"
-            item-value="value"
-            label="搜索源"
-            hide-details
-            style="min-width: 180px"
-          />
-          <v-btn
-            color="primary"
-            variant="flat"
-            size="large"
-            :disabled="!keyword.trim()"
-            @click="doSearch()"
-          >
-            <v-icon icon="mdi-magnify" class="mr-1" /> 搜索
-          </v-btn>
-        </div>
-      </div>
+  <div
+    class="px-3 px-sm-6 pt-2 pb-4 mx-auto d-flex flex-column align-center"
+    style="max-width: 760px"
+  >
+    <!-- 居中简洁的搜索区 -->
+    <div class="text-h6 font-weight-bold mt-5 mb-1">多源磁力搜索</div>
+    <div class="text-caption text-medium-emphasis mb-4">并发请求所有已启用的搜索源，聚合去重展示结果</div>
 
-      <!-- 热门推荐 / 搜索历史 -->
-      <div v-if="hotWords.length" class="mt-3">
-        <div class="d-flex align-center">
-          <span class="text-subtitle-2 text-medium-emphasis mr-2">热门推荐</span>
-          <v-btn variant="text" size="x-small" color="primary" @click="shuffleHotWords">
-            <v-icon icon="mdi-refresh" size="16" class="mr-1" />换一换
-          </v-btn>
-        </div>
-        <div class="d-flex flex-wrap ga-2 mt-1">
-          <v-chip
-            v-for="(w, i) in hotWords.slice(0, 12)"
-            :key="i"
-            size="small"
-            variant="tonal"
-            @click="selectHotWord(w)"
-          >
-            {{ w }}
-          </v-chip>
-        </div>
-      </div>
-      <div v-if="searchHistory.length" class="mt-2">
-        <div class="d-flex align-center">
-          <span class="text-subtitle-2 text-medium-emphasis mr-2">搜索历史</span>
-          <v-btn variant="text" size="x-small" color="error" @click="clearSearchHistory">
-            <v-icon icon="mdi-delete-outline" size="16" class="mr-1" />清空
-          </v-btn>
-        </div>
-        <div class="d-flex flex-wrap ga-2 mt-1">
-          <v-chip
-            v-for="(w, i) in searchHistory.slice(0, 12)"
-            :key="i"
-            size="small"
-            variant="outlined"
-            @click="selectHotWord(w)"
-          >
-            {{ w }}
-          </v-chip>
-        </div>
+    <v-sheet
+      rounded="xl"
+      elevation="2"
+      color="surface"
+      border="sm"
+      class="pa-2"
+      style="width: 100%; max-width: 640px"
+    >
+      <v-text-field
+        v-model="keyword"
+        label="输入关键词，例如：电影名 / 剧集 / 游戏"
+        variant="solo"
+        flat
+        rounded="lg"
+        hide-details
+        clearable
+        density="compact"
+        @keyup.enter="doSearch()"
+      />
+      <div class="d-flex ga-2 mt-2">
+        <v-select
+          v-model="engineId"
+          :items="[
+            { title: '全部启用的搜索源', value: null },
+            ...sitesStore.enabledSites.map((s) => ({ title: s.name, value: s.id })),
+          ]"
+          item-title="title"
+          item-value="value"
+          label="搜索源"
+          variant="solo"
+          flat
+          hide-details
+          density="compact"
+          class="flex-grow-1"
+        />
+        <v-btn
+          color="primary"
+          variant="flat"
+          size="large"
+          class="px-6"
+          :disabled="!keyword.trim()"
+          @click="doSearch()"
+        >
+          <v-icon icon="mdi-magnify" class="mr-1" /> 搜索
+        </v-btn>
       </div>
     </v-sheet>
 
-    <v-empty-state
-      icon="mdi-flash-outline"
-      title="开始你的第一次搜索"
-      text="输入关键词，DHThub 将并发请求所有已启用的搜索源并聚合结果"
-      class="mt-6"
-    />
+    <!-- 热门推荐 -->
+    <div v-if="hotWords.length" class="mt-4 d-flex flex-column align-center">
+      <div class="d-flex align-center">
+        <span class="text-caption text-medium-emphasis mr-2">热门推荐</span>
+        <v-btn variant="text" size="x-small" color="primary" @click="shuffleHotWords">
+          <v-icon icon="mdi-refresh" size="16" class="mr-1" />换一换
+        </v-btn>
+      </div>
+      <div class="d-flex flex-wrap justify-center ga-2 mt-1">
+        <v-chip
+          v-for="(w, i) in hotWords.slice(0, 12)"
+          :key="i"
+          size="small"
+          variant="tonal"
+          @click="selectHotWord(w)"
+        >
+          {{ w }}
+        </v-chip>
+      </div>
+    </div>
+
+    <!-- 搜索历史 -->
+    <div v-if="searchHistory.length" class="mt-3 d-flex flex-column align-center">
+      <div class="d-flex align-center">
+        <span class="text-caption text-medium-emphasis mr-2">搜索历史</span>
+        <v-btn variant="text" size="x-small" color="error" @click="clearSearchHistory">
+          <v-icon icon="mdi-delete-outline" size="16" class="mr-1" />清空
+        </v-btn>
+      </div>
+      <div class="d-flex flex-wrap justify-center ga-2 mt-1">
+        <v-chip
+          v-for="(w, i) in searchHistory.slice(0, 12)"
+          :key="i"
+          size="small"
+          variant="outlined"
+          @click="selectHotWord(w)"
+        >
+          {{ w }}
+        </v-chip>
+      </div>
+    </div>
   </div>
 </template>

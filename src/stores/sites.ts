@@ -55,7 +55,16 @@ export const useSitesStore = defineStore('sites', {
     },
 
     async setEnabled(id: string, enabled: boolean) {
-      this.sites = await invoke<SiteConfig[]>('set_site_enabled', { id, enabled })
+      // 乐观更新：先本地翻转，失败回滚并抛出
+      const idx = this.sites.findIndex((s) => s.id === id)
+      const prev = idx >= 0 ? this.sites[idx].enabled : null
+      if (idx >= 0) this.sites[idx].enabled = enabled
+      try {
+        this.sites = await invoke<SiteConfig[]>('set_site_enabled', { id, enabled })
+      } catch (e) {
+        if (idx >= 0 && prev !== null) this.sites[idx].enabled = prev
+        throw e
+      }
     },
 
     async setDefault(id: string | null) {

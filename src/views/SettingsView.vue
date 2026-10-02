@@ -226,27 +226,6 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
 
     <v-main>
       <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
-        <!-- 页头操作 -->
-        <div class="d-flex align-center mt-1 mb-3 flex-wrap ga-2">
-          <div class="text-caption text-medium-emphasis mr-auto">通用、GitHub 镜像与数据管理</div>
-          <v-btn
-            color="primary"
-            variant="tonal"
-            prepend-icon="mdi-import"
-            size="small"
-            :loading="importing"
-            @click="doImportSettings"
-          >
-            导入
-          </v-btn>
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-export" size="small" @click="doExportSettings">
-            导出
-          </v-btn>
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-update" size="small" :loading="updateChecking" @click="checkUpdate">
-            检查更新
-          </v-btn>
-        </div>
-
         <!-- 通用：外观 + 自动检测更新 -->
         <v-card class="mb-3">
           <v-card-item>
@@ -256,7 +235,6 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
               </v-avatar>
             </template>
             <v-card-title class="text-subtitle-1 font-weight-bold">通用</v-card-title>
-            <v-card-subtitle class="text-caption">主题模式与自动检测更新</v-card-subtitle>
           </v-card-item>
           <v-card-text>
             <div class="text-subtitle-2 font-weight-bold mb-1">外观</div>
@@ -273,6 +251,17 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
               </div>
               <v-switch :model-value="autoCheck" color="primary" hide-details @update:model-value="saveAutoCheck(!!$event)" />
             </div>
+            <v-btn
+              color="primary"
+              variant="tonal"
+              prepend-icon="mdi-update"
+              size="small"
+              class="mt-3"
+              :loading="updateChecking"
+              @click="checkUpdate"
+            >
+              立即检查更新
+            </v-btn>
           </v-card-text>
         </v-card>
 
@@ -285,9 +274,6 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
               </v-avatar>
             </template>
             <v-card-title class="text-subtitle-1 font-weight-bold">GitHub 镜像</v-card-title>
-            <v-card-subtitle class="text-caption">
-              用于检查更新、拉取订阅源等 GitHub 请求；内置 2 个，可自定义添加
-            </v-card-subtitle>
             <template #append>
               <v-btn
                 color="primary"
@@ -375,7 +361,6 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
               </v-avatar>
             </template>
             <v-card-title class="text-subtitle-1 font-weight-bold">数据管理</v-card-title>
-            <v-card-subtitle class="text-caption">设置备份与恢复、历史与订阅数据清理</v-card-subtitle>
           </v-card-item>
           <v-card-text>
             <div class="text-subtitle-2 font-weight-bold mb-1">设置备份 / 恢复</div>
@@ -413,7 +398,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
             </template>
             <v-card-title class="text-subtitle-1 font-weight-bold">订阅源</v-card-title>
             <v-card-subtitle class="text-caption">
-              当前订阅仓库地址（可在「站点管理」中修改；拉取时自动套用选中镜像）
+              当前订阅仓库地址（可在「订阅源」页修改；拉取时自动套用选中镜像）
             </v-card-subtitle>
           </v-card-item>
           <v-card-text class="text-body-2 font-family-monospace text-caption">
@@ -422,7 +407,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- 关于 -->
-        <v-card class="mb-3">
+        <v-card class="mb-3" @click="$router.push('/about')">
           <v-card-item>
             <template #prepend>
               <v-avatar color="success-container" variant="flat" rounded="lg">
@@ -432,9 +417,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
             <v-card-title class="text-subtitle-1 font-weight-bold">关于</v-card-title>
             <v-card-subtitle class="text-caption">版本信息与项目主页</v-card-subtitle>
             <template #append>
-              <v-btn variant="tonal" size="small" color="secondary" prepend-icon="mdi-open-in-new" @click="$router.push('/about')">
-                查看详情
-              </v-btn>
+              <v-icon icon="mdi-chevron-right" color="grey" />
             </template>
           </v-card-item>
         </v-card>

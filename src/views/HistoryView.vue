@@ -59,7 +59,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
+  <div class="px-3 px-sm-6 pt-2 pb-3 mx-auto" style="max-width: 1040px">
     <div class="d-flex align-center mt-2 mb-4">
       <div>
         <div class="text-h6 font-weight-bold">历史记录</div>
