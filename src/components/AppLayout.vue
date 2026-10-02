@@ -12,7 +12,7 @@ import SitesView from '../views/SitesView.vue'
 import HistoryView from '../views/HistoryView.vue'
 
 const router = useRouter()
-const titles = ['搜索', '订阅源', '历史记录']
+const titles = ['搜索', '搜索源', '历史记录']
 const icons = ['mdi-magnify', 'mdi-antenna', 'mdi-history']
 const tab = ref(0)
 const swiperRef = ref<SwiperInterface | null>(null)
@@ -83,12 +83,13 @@ function goTab(i: number) {
       v-model="tab"
       grow
       mandatory
+      height="64"
       class="d-sm-none"
-      style="position: static; width: 100%"
+      style="position: static; width: 100%; padding-bottom: env(safe-area-inset-bottom)"
       @update:model-value="goTab(Number($event))"
     >
       <v-btn v-for="(t, i) in titles" :key="i">
-        <v-icon :icon="icons[i]" />
+        <v-icon :icon="icons[i]" size="24" />
         <span>{{ t }}</span>
       </v-btn>
     </v-bottom-navigation>
@@ -100,5 +101,13 @@ function goTab(i: number) {
   overflow-y: auto;
   overflow-x: hidden;
   height: 100%;
+}
+
+/* 应用栏强制在流内，避免 fixed 布局覆盖内嵌页顶部 */
+:deep(.v-app-bar) {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
 }
 </style>

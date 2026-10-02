@@ -215,7 +215,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
 <template>
   <div>
     <!-- 设置页独立框架：返回顶栏 + 内容 -->
-    <v-app-bar color="surface" border="b" height="56">
+    <v-app-bar color="surface" border="b" height="52">
       <template #prepend>
         <v-btn icon="mdi-arrow-left" variant="text" title="返回" @click="$router.push('/')" />
       </template>
@@ -227,7 +227,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
     <v-main>
       <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
         <!-- 通用：外观 + 自动检测更新 -->
-        <v-card class="mb-3">
+        <v-card class="mb-3" rounded="lg">
           <v-card-item>
             <template #prepend>
               <v-avatar color="primary-container" variant="flat" rounded="lg">
@@ -238,11 +238,22 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           </v-card-item>
           <v-card-text>
             <div class="text-subtitle-2 font-weight-bold mb-1">外观</div>
-            <v-radio-group v-model="themeMode" inline hide-details @update:model-value="saveTheme(themeMode)">
-              <v-radio label="跟随系统" value="system" color="primary" />
-              <v-radio label="浅色" value="light" color="primary" />
-              <v-radio label="深色" value="dark" color="primary" />
-            </v-radio-group>
+            <v-select
+              :model-value="themeMode"
+              :items="[
+                { title: '跟随系统', value: 'system' },
+                { title: '浅色', value: 'light' },
+                { title: '深色', value: 'dark' },
+              ]"
+              item-title="title"
+              item-value="value"
+              label="主题模式"
+              variant="outlined"
+              density="compact"
+              hide-details
+              class="mb-1"
+              @update:model-value="saveTheme($event)"
+            />
             <v-divider class="my-2" />
             <div class="d-flex align-center">
               <div class="mr-auto">
@@ -266,7 +277,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- GitHub 镜像 -->
-        <v-card class="mb-3">
+        <v-card class="mb-3" rounded="lg">
           <v-card-item>
             <template #prepend>
               <v-avatar color="secondary-container" variant="flat" rounded="lg">
@@ -353,7 +364,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- 数据管理 -->
-        <v-card class="mb-3">
+        <v-card class="mb-3" rounded="lg">
           <v-card-item>
             <template #prepend>
               <v-avatar color="error-container" variant="flat" rounded="lg">
@@ -389,7 +400,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-card>
 
         <!-- 订阅源 -->
-        <v-card class="mb-3">
+        <v-card class="mb-3" rounded="lg">
           <v-card-item>
             <template #prepend>
               <v-avatar color="info-container" variant="flat" rounded="lg">
@@ -398,7 +409,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
             </template>
             <v-card-title class="text-subtitle-1 font-weight-bold">订阅源</v-card-title>
             <v-card-subtitle class="text-caption">
-              当前订阅仓库地址（可在「订阅源」页修改；拉取时自动套用选中镜像）
+              当前订阅仓库地址（可在「搜索源」页修改；拉取时自动套用选中镜像）
             </v-card-subtitle>
           </v-card-item>
           <v-card-text class="text-body-2 font-family-monospace text-caption">
@@ -424,7 +435,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
 
         <!-- 添加自定义镜像弹窗（仅需填写链接，名称自动生成） -->
         <v-dialog v-model="addMirrorDialog" max-width="480">
-          <v-card>
+          <v-card rounded="lg">
             <v-card-title class="text-subtitle-1 font-weight-bold">添加自定义 GitHub 镜像</v-card-title>
             <v-divider />
             <v-card-text>

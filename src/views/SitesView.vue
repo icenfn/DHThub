@@ -20,6 +20,64 @@ const addDialog = ref(false)
 const editing = ref<SiteConfig | null>(null)
 const form = ref<SiteConfig>(emptyForm())
 
+// 长按（手机）/ 右键（PC）上下文菜单 + 删除二次确认
+const contextMenu = ref<{ show: boolean; x: number; y: number; site: SiteConfig | null }>({
+  show: false,
+  x: 0,
+  y: 0,
+  site: null,
+})
+const deleteDialog = ref(false)
+const deletingSite = ref<SiteConfig | null>(null)
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+
+function openContextMenu(site: SiteConfig, x: number, y: number) {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+  contextMenu.value = { show: true, x, y, site }
+}
+
+function onRowContextmenu(site: SiteConfig, e: MouseEvent) {
+  openContextMenu(site, e.clientX, e.clientY)
+}
+
+function onRowTouchstart(site: SiteConfig, e: TouchEvent) {
+  const t = e.touches[0]
+  if (!t) return
+  longPressTimer = setTimeout(() => openContextMenu(site, t.clientX, t.clientY), 500)
+}
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function editFromMenu() {
+  const site = contextMenu.value.site
+  contextMenu.value.show = false
+  if (site?.is_custom) openEdit(site)
+}
+
+function askDelete() {
+  const site = contextMenu.value.site
+  contextMenu.value.show = false
+  if (site) {
+    deletingSite.value = site
+    deleteDialog.value = true
+  }
+}
+
+async function confirmDelete() {
+  const site = deletingSite.value
+  deleteDialog.value = false
+  deletingSite.value = null
+  if (site) await removeSite(site)
+}
+
 function emptyForm(): SiteConfig {
   return {
     name: '',
@@ -228,8 +286,8 @@ onMounted(async () => {
   <div class="px-3 px-sm-6 pt-2 pb-3 mx-auto" style="max-width: 1040px">
     <div class="d-flex align-center mt-2 mb-4">
       <div>
-        <div class="text-h6 font-weight-bold">订阅源</div>
-        <div class="text-caption text-medium-emphasis">共 {{ sitesStore.sites.length }} 个搜索源 · 订阅 {{ subscribedCount }} · 自定义 {{ customCount }}</div>
+        <div class="text-h6 font-weight-bold">搜索源</div>
+        <div class="text-caption text-medium-emphasis">共 {{ sitesStore.sites.length }} 个 · 订阅 {{ subscribedCount }} · 自定义 {{ customCount }}</div>
       </div>
       <v-spacer />
       <v-btn variant="tonal" color="secondary" prepend-icon="mdi-import" size="small" @click="doImport">导入</v-btn>
@@ -283,7 +341,7 @@ onMounted(async () => {
           </v-avatar>
         </template>
         <v-card-title class="text-subtitle-1 font-weight-bold">搜索源列表</v-card-title>
-        <v-card-subtitle class="text-caption">开启的站点才会参与搜索；点击 ☆ 设为默认引擎；均可删除</v-card-subtitle>
+        <v-card-subtitle class="text-caption">开启的站点才会参与搜索；长按或右键站点可编辑 / 删除</v-card-subtitle>
         <template #append>
           <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" size="small" @click="openAdd">
             添加自定义
@@ -300,7 +358,15 @@ onMounted(async () => {
         text="点击上方「拉取订阅」加载内置订阅源，或添加自定义站点"
       />
       <v-list v-else>
-        <v-list-item v-for="site in sitesStore.sites" :key="site.id">
+        <v-list-item
+          v-for="site in sitesStore.sites"
+          :key="site.id"
+          @contextmenu.prevent="onRowContextmenu(site, $event)"
+          @touchstart="onRowTouchstart(site, $event)"
+          @touchend="cancelLongPress"
+          @touchmove="cancelLongPress"
+          @touchcancel="cancelLongPress"
+        >
           <template #prepend>
             <v-btn
               :icon="site.is_default ? 'mdi-star' : 'mdi-star-outline'"
@@ -321,35 +387,51 @@ onMounted(async () => {
             <span v-if="site.update_time" class="ml-2 text-medium-emphasis">更新：{{ site.update_time }}</span>
           </v-list-item-subtitle>
           <template #append>
-            <div class="d-flex align-center ga-1">
-              <v-btn
-                v-if="site.is_custom"
-                icon="mdi-pencil-outline"
-                size="small"
-                variant="text"
-                title="编辑"
-                @click="openEdit(site)"
-              />
-              <v-btn
-                icon="mdi-delete-outline"
-                size="small"
-                variant="text"
-                color="error"
-                title="删除搜索源"
-                @click="removeSite(site)"
-              />
-              <v-switch
-                :model-value="site.enabled"
-                color="primary"
-                hide-details
-                density="compact"
-                @update:model-value="toggleEnabled(site, !!$event)"
-              />
-            </div>
+            <v-switch
+              :model-value="site.enabled"
+              color="primary"
+              hide-details
+              density="compact"
+              @update:model-value="toggleEnabled(site, !!$event)"
+            />
           </template>
         </v-list-item>
       </v-list>
     </v-card>
+
+    <!-- 长按 / 右键上下文菜单 -->
+    <v-menu
+      v-model="contextMenu.show"
+      :position-x="contextMenu.x"
+      :position-y="contextMenu.y"
+      min-width="200"
+    >
+      <v-list density="compact" nav>
+        <v-list-item
+          v-if="contextMenu.site?.is_custom"
+          prepend-icon="mdi-pencil-outline"
+          title="编辑"
+          @click="editFromMenu"
+        />
+        <v-list-item prepend-icon="mdi-delete-outline" title="删除搜索源" color="error" @click="askDelete" />
+      </v-list>
+    </v-menu>
+
+    <!-- 删除二次确认 -->
+    <v-dialog v-model="deleteDialog" max-width="360">
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">删除搜索源</v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">
+          确定删除「{{ deletingSite?.name }}」吗？删除后需重新订阅或添加。
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="deleteDialog = false">取消</v-btn>
+          <v-btn color="error" variant="flat" @click="confirmDelete">删除</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- 自定义站点表单 -->
     <v-dialog v-model="addDialog" max-width="640">

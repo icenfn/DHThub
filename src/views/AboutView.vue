@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isTauri } from '../lib/tauri'
 import { checkUpdate, updateChecking } from '../lib/update'
 
-const version = ref('0.3.2')
+const version = ref('0.3.3')
 
 onMounted(async () => {
   if (isTauri) {
@@ -41,7 +41,7 @@ async function openRepo() {
 
     <v-main>
       <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 760px">
-        <v-card rounded="xl" class="mt-3 pa-3">
+        <v-card rounded="lg" class="mt-3 pa-3">
           <div class="d-flex flex-column align-center text-center pa-4">
             <v-avatar color="primary" size="64" rounded="lg">
               <v-icon icon="mdi-flash-outline" size="36" />

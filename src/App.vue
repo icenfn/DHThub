@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 应用外壳：仅承载全局逻辑（主题 / 更新提示），页面框架由各路由页面自行提供
-import { onMounted, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { useMediaQuery } from '@vueuse/core'
 import { settings } from './stores/settings'
@@ -12,6 +12,20 @@ import {
   updateMsg,
   updateToast,
 } from './lib/update'
+
+// 有更新 -> 弹窗通知；无更新/失败 -> snackbar 轻提示
+const updateDialog = ref(false)
+const updateSnackbar = ref(false)
+
+watch([updateToast, updateHasNew], () => {
+  if (!updateToast.value) return
+  if (updateHasNew.value) {
+    updateDialog.value = true
+  } else {
+    updateSnackbar.value = true
+  }
+  updateToast.value = false
+})
 
 const theme = useTheme()
 const prefersDark = useMediaQuery('(prefers-color-scheme: dark)')
@@ -53,21 +67,29 @@ onMounted(async () => {
   <v-app>
     <router-view />
 
-    <!-- 更新检测提示（snackbar，无弹窗） -->
-    <v-snackbar
-      v-model="updateToast"
-      location="bottom"
-      multi-line
-      :timeout="updateHasNew ? 8000 : 2500"
-      color="surface"
-    >
+    <!-- 发现新版本：弹窗通知 -->
+    <v-dialog v-model="updateDialog" max-width="420">
+      <v-card rounded="lg">
+        <v-card-title class="d-flex align-center ga-2">
+          <v-icon icon="mdi-update" color="primary" />
+          <span class="text-subtitle-1 font-weight-bold">发现新版本</span>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">{{ updateMsg }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="updateDialog = false">稍后</v-btn>
+          <v-btn color="primary" variant="flat" @click="openReleasePage">前往下载</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 无更新 / 检查失败：snackbar 轻提示 -->
+    <v-snackbar v-model="updateSnackbar" location="bottom" multi-line :timeout="2500" color="surface">
       <div class="d-flex align-center ga-2">
-        <v-icon :icon="updateHasNew ? 'mdi-update' : 'mdi-check-circle'" :color="updateHasNew ? 'primary' : 'success'" size="20" />
+        <v-icon icon="mdi-check-circle" color="success" size="20" />
         <span class="text-body-2">{{ updateMsg }}</span>
       </div>
-      <template v-if="updateHasNew" #actions>
-        <v-btn color="primary" variant="text" size="small" @click="openReleasePage">前往下载</v-btn>
-      </template>
     </v-snackbar>
   </v-app>
 </template>

@@ -71,11 +71,11 @@ pub struct SiteConfig {
     /// 是否为本地自定义站点
     #[serde(default, skip)]
     pub is_custom: bool,
-    /// 用户开关覆盖（运行时计算，不落盘）
-    #[serde(default, skip)]
+    /// 用户开关覆盖（运行时计算，随 API 返回前端）
+    #[serde(default)]
     pub enabled: bool,
-    /// 是否为默认搜索源（运行时计算）
-    #[serde(default, skip)]
+    /// 是否为默认搜索源（运行时计算，随 API 返回前端）
+    #[serde(default)]
     pub is_default: bool,
 }
 

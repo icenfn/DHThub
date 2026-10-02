@@ -137,7 +137,7 @@ async fn search_sites(
         }
     }
     if sites.is_empty() {
-        return Err("没有启用的搜索源，请先在「站点管理」中启用或订阅".into());
+        return Err("没有启用的搜索源，请先在「搜索源」页启用或订阅".into());
     }
     let page = page.max(1);
     Ok(search::search_multi(&state.http, sites, &keyword, page).await)

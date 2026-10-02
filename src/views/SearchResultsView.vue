@@ -83,7 +83,7 @@ async function doSearch(kw = keyword.value, p = 1) {
       siteIds: ids,
       page: p,
     })
-    if (outcomes.value.length === 0) errorMsg.value = '没有启用的搜索源，请先到「站点管理」订阅或启用'
+    if (outcomes.value.length === 0) errorMsg.value = '没有启用的搜索源，请先到「搜索源」页订阅或启用'
   } catch (e) {
     errorMsg.value = String(e)
     outcomes.value = []
@@ -144,7 +144,7 @@ onMounted(async () => {
     <v-main class="flex-grow-1 overflow-y-auto">
       <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
         <!-- 搜索区（可修改关键词重新搜索） -->
-        <v-sheet rounded="xl" class="pa-3" elevation="1" color="surface" border="sm">
+        <v-sheet rounded="lg" class="pa-3" elevation="1" color="surface" border="sm">
           <div class="d-flex flex-column flex-sm-row ga-2">
             <v-text-field
               v-model="keyword"

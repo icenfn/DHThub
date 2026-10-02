@@ -1,17 +1,13 @@
 <script setup lang="ts">
-// 首页（搜索 tab）：输入关键词 + 搜索源选择 + 热门推荐/搜索历史；结果跳转独立搜索结果页
+// 首页（搜索 tab）：居中搜索框 + 热门推荐/搜索历史；结果跳转独立搜索结果页
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { isTauri } from '../lib/tauri'
-import { useSitesStore } from '../stores/sites'
 import { settings } from '../stores/settings'
 import { mirrorUrl, HOTWORDS_URL } from '../lib/mirrors'
 import { httpGetText } from '../lib/http'
 
 const router = useRouter()
-const sitesStore = useSitesStore()
 const keyword = ref('')
-const engineId = ref<string | null>(null) // null = 全部
 const hotWords = ref<string[]>([])
 const searchHistory = ref<string[]>([])
 
@@ -31,7 +27,7 @@ function doSearch(kw = keyword.value) {
   keyword.value = k
   void settings.pushSearchHistory(k)
   refreshLocalWords()
-  router.push({ path: '/search', query: { k, e: engineId.value ?? '' } })
+  router.push({ path: '/search', query: { k } })
 }
 
 function selectHotWord(w: string) {
@@ -64,65 +60,46 @@ async function loadHotWords() {
 onMounted(async () => {
   refreshLocalWords()
   void loadHotWords()
-  if (isTauri) {
-    try {
-      await sitesStore.load()
-    } catch {
-      /* 忽略 */
-    }
-  }
 })
 </script>
 
 <template>
   <div
-    class="px-3 px-sm-6 pt-2 pb-4 mx-auto d-flex flex-column align-center"
-    style="max-width: 760px"
+    class="px-3 px-sm-6 pt-1 pb-4 mx-auto d-flex flex-column align-center"
+    style="min-height: 100%; max-width: 760px"
   >
+    <!-- 上下弹性垫片：内容垂直居中（内容超高时自动恢复滚动，不裁切顶部） -->
+    <div class="flex-grow-1" />
+
     <!-- 居中简洁的搜索区 -->
-    <div class="text-h6 font-weight-bold mt-5 mb-1">多源磁力搜索</div>
+    <div class="text-h6 font-weight-bold mb-1">多源磁力搜索</div>
     <div class="text-caption text-medium-emphasis mb-4">并发请求所有已启用的搜索源，聚合去重展示结果</div>
 
     <v-sheet
-      rounded="xl"
-      elevation="2"
+      rounded="lg"
+      elevation="1"
       color="surface"
       border="sm"
       class="pa-2"
-      style="width: 100%; max-width: 640px"
+      style="width: 100%; max-width: 560px"
     >
-      <v-text-field
-        v-model="keyword"
-        label="输入关键词，例如：电影名 / 剧集 / 游戏"
-        variant="solo"
-        flat
-        rounded="lg"
-        hide-details
-        clearable
-        density="compact"
-        @keyup.enter="doSearch()"
-      />
-      <div class="d-flex ga-2 mt-2">
-        <v-select
-          v-model="engineId"
-          :items="[
-            { title: '全部启用的搜索源', value: null },
-            ...sitesStore.enabledSites.map((s) => ({ title: s.name, value: s.id })),
-          ]"
-          item-title="title"
-          item-value="value"
-          label="搜索源"
+      <div class="d-flex ga-2">
+        <v-text-field
+          v-model="keyword"
+          label="输入关键词，例如：电影名 / 剧集 / 游戏"
           variant="solo"
           flat
+          rounded="lg"
           hide-details
+          clearable
           density="compact"
-          class="flex-grow-1"
+          @keyup.enter="doSearch()"
         />
         <v-btn
           color="primary"
           variant="flat"
           size="large"
-          class="px-6"
+          class="px-5"
           :disabled="!keyword.trim()"
           @click="doSearch()"
         >
@@ -172,5 +149,7 @@ onMounted(async () => {
         </v-chip>
       </div>
     </div>
+
+    <div class="flex-grow-1" />
   </div>
 </template>
