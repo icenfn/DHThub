@@ -6,7 +6,7 @@ mod search;
 mod sites;
 
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
-use models::SiteConfig;
+use models::{SiteConfig, SiteOutcome};
 use sites::SiteStore;
 use std::time::Duration;
 use tauri::Manager;
