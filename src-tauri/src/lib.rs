@@ -42,6 +42,25 @@ impl AppState {
     }
 }
 
+// ---------- DNS 测速 ----------
+
+/// 对一组 DNS 服务器并发测速（example.com 解析耗时），返回 [地址, 毫秒]
+#[tauri::command]
+async fn test_dns_latencies(servers: Vec<String>) -> Result<Vec<(String, u64)>, String> {
+    let mut tasks = tokio::task::JoinSet::new();
+    for srv in servers {
+        let s = srv.clone();
+        tasks.spawn(async move { (s.clone(), dns::measure_latency(&s).await) });
+    }
+    let mut out = Vec::new();
+    while let Some(res) = tasks.join_next().await {
+        if let Ok((srv, Ok(ms))) = res {
+            out.push((srv, ms));
+        }
+    }
+    Ok(out)
+}
+
 // ---------- 站点 ----------
 
 #[tauri::command]
@@ -210,6 +229,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_sites,
+            test_dns_latencies,
             subscribe_sites,
             add_custom_site,
             update_custom_site,

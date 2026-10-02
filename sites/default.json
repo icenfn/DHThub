@@ -753,5 +753,38 @@
     "attr": "href"
    }
   }
+ },
+ {
+  "id": "10030",
+  "name": "SKR BT",
+  "info": "skrbtdo.cc 磁力资源搜索（WordPress 模板，尽力适配）",
+  "state": true,
+  "time": "2026-10-02",
+  "update_time": "2026-10-02",
+  "request": {
+   "method": "GET",
+   "search_url": "https://skrbtdo.cc/?s=[keyword]&paged=[page]",
+   "headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"
+   },
+   "timeout_ms": 12000
+  },
+  "expression_model": {
+   "group": "article",
+   "title": {
+    "sel": "h2 a",
+    "attr": "title"
+   },
+   "date": "time",
+   "size": "",
+   "url": {
+    "sel": "h2 a",
+    "attr": "href"
+   },
+   "magnet": {
+    "sel": "",
+    "attr": "href"
+   }
+  }
  }
 ]

@@ -24,6 +24,22 @@ impl Resolve for CustomDnsResolver {
     }
 }
 
+/// 用指定 DNS 服务器解析 example.com 并返回耗时（毫秒）；失败返回 Err
+pub async fn measure_latency(dns: &str) -> Result<u64, String> {
+    let addr: SocketAddr = format!("{dns}:53")
+        .parse()
+        .map_err(|_| format!("DNS 地址无效：{dns}"))?;
+    let mut cfg = ResolverConfig::new();
+    cfg.add_name_server(NameServerConfig::new(addr, Protocol::Udp));
+    let resolver = TokioAsyncResolver::tokio(cfg, ResolverOpts::default());
+    let started = std::time::Instant::now();
+    let _ = resolver
+        .lookup_ip("example.com")
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(started.elapsed().as_millis() as u64)
+}
+
 /// 构建使用指定 DNS 服务器的 HTTP 客户端（与默认客户端相同 UA / 超时）
 pub fn build_client(dns: &str) -> Result<reqwest::Client, String> {
     let addr: SocketAddr = format!("{dns}:53")

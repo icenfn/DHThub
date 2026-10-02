@@ -7,12 +7,40 @@ import { useSitesStore } from '../stores/sites'
 import { invoke, isTauri } from '../lib/tauri'
 import { speedTestMirror, MIRROR_PROBE_URL } from '../lib/mirrors'
 import { checkUpdate, updateChecking } from '../lib/update'
-import type { GithubMirror, MirrorSpeedResult } from '../types'
+import type { DnsServer, DnsSpeedResult, GithubMirror, MirrorSpeedResult } from '../types'
 
 const sitesStore = useSitesStore()
 const themeMode = ref<'system' | 'light' | 'dark'>('system')
 const autoCheck = ref(true)
-const dnsServer = ref('')
+const dnsServers = ref<DnsServer[]>([])
+const selectedDnsId = ref('')
+const dnsSpeeds = ref<Record<string, DnsSpeedResult>>({})
+const dnsTesting = ref(false)
+const dnsTestingIds = ref<Set<string>>(new Set())
+const addDnsDialog = ref(false)
+const newDnsBase = ref('')
+
+interface DnsRow extends DnsServer {
+  speedChip: { color: string; icon: string; text: string } | null
+  testing: boolean
+}
+
+const dnsRows = computed<DnsRow[]>(() =>
+  dnsServers.value.map((d) => {
+    const r = dnsSpeeds.value[d.id]
+    let chip: DnsRow['speedChip'] = null
+    if (r) {
+      chip = r.error
+        ? { color: 'error', icon: 'mdi-close', text: '失败' }
+        : {
+            color: (r.latency ?? 0) < 200 ? 'success' : 'warning',
+            icon: 'mdi-speedometer',
+            text: `${r.latency}ms`,
+          }
+    }
+    return { ...d, speedChip: chip, testing: dnsTestingIds.value.has(d.id) }
+  }),
+)
 const toast = ref('')
 const showToast = ref(false)
 const clearing = ref(false)
@@ -66,11 +94,6 @@ async function saveTheme(v: 'system' | 'light' | 'dark') {
 }
 
 // ---------- 更新 ----------
-async function saveDns(v: string) {
-  dnsServer.value = v.trim()
-  await settings.set('dnsServer', dnsServer.value)
-}
-
 async function saveAutoCheck(v: boolean) {
   autoCheck.value = v
   await settings.set('autoCheckUpdate', v)
@@ -91,6 +114,73 @@ async function clearHistory() {
 async function clearSearchHistory() {
   await settings.clearSearchHistory()
   notice('已清空搜索历史')
+}
+
+// ---------- DNS ----------
+async function refreshDns() {
+  dnsServers.value = settings.getDnsServers()
+  selectedDnsId.value = settings.get('dnsId')
+}
+
+async function selectDns(d: DnsServer) {
+  selectedDnsId.value = d.id
+  await settings.selectDns(d.id)
+  notice(`已切换 DNS：${d.name}（${d.base}）`)
+}
+
+async function runDnsSpeedTest() {
+  if (dnsTesting.value) return
+  dnsTesting.value = true
+  dnsSpeeds.value = {}
+  dnsTestingIds.value = new Set(dnsServers.value.map((d) => d.id))
+  try {
+    const servers = dnsServers.value.map((d) => d.base)
+    const results = await invoke<[string, number][]>('test_dns_latencies', { servers })
+    const map = new Map(results)
+    const list = dnsServers.value.map((d) => {
+      const ms = map.get(d.base)
+      return {
+        id: d.id,
+        name: d.name,
+        base: d.base,
+        latency: ms ?? null,
+        error: ms == null ? '测速失败' : null,
+      } as DnsSpeedResult
+    })
+    dnsSpeeds.value = Object.fromEntries(list.map((r) => [r.id, r]))
+    const ok = list.filter((r) => r.latency != null).length
+    notice(`测速完成：${ok}/${list.length} 个 DNS 可用`)
+  } catch (e) {
+    notice(String(e))
+  } finally {
+    dnsTesting.value = false
+    dnsTestingIds.value = new Set()
+  }
+}
+
+function openAddDns() {
+  newDnsBase.value = ''
+  addDnsDialog.value = true
+}
+
+async function addDns() {
+  try {
+    const d = await settings.addDns(newDnsBase.value)
+    newDnsBase.value = ''
+    addDnsDialog.value = false
+    await refreshDns()
+    notice(`已添加 DNS：${d.name}（${d.base}）`)
+  } catch (e) {
+    notice(String(e))
+  }
+}
+
+async function removeDns(d: DnsServer) {
+  if (d.builtin) return
+  await settings.removeDns(d.id)
+  delete dnsSpeeds.value[d.id]
+  await refreshDns()
+  notice('已删除自定义 DNS')
 }
 
 // ---------- GitHub 镜像 ----------
@@ -198,7 +288,7 @@ async function doImportSettings() {
     // 重新同步页面状态
     themeMode.value = settings.get('theme')
     autoCheck.value = settings.get('autoCheckUpdate')
-    dnsServer.value = settings.get('dnsServer')
+    await refreshDns()
     await refreshMirrors()
     notice(`设置导入成功（${count} 项）`)
   } catch (e) {
@@ -267,19 +357,6 @@ onMounted(async () => {
               </div>
               <v-switch :model-value="autoCheck" color="primary" hide-details @update:model-value="saveAutoCheck(!!$event)" />
             </div>
-            <v-divider class="my-2" />
-            <div class="text-subtitle-2 font-weight-bold mb-1">自定义 DNS</div>
-            <v-text-field
-              :model-value="dnsServer"
-              label="DNS 服务器（搜索请求使用）"
-              placeholder="223.5.5.5 / 8.8.8.8"
-              variant="outlined"
-              density="compact"
-              hide-details
-              hint="留空使用系统默认；可解决个别搜索源域名解析失败问题"
-              persistent-hint
-              @update:model-value="saveDns($event)"
-            />
             <v-btn
               color="primary"
               variant="tonal"
@@ -291,6 +368,90 @@ onMounted(async () => {
             >
               立即检查更新
             </v-btn>
+          </v-card-text>
+        </v-card>
+
+        <!-- DNS 服务器 -->
+        <v-card class="mb-3" rounded="lg">
+          <v-card-item>
+            <template #prepend>
+              <v-avatar color="tertiary-container" variant="flat" rounded="lg">
+                <v-icon icon="mdi-server-network" color="on-tertiary-container" />
+              </v-avatar>
+            </template>
+            <v-card-title class="text-subtitle-1 font-weight-bold">DNS 服务器</v-card-title>
+            <v-card-subtitle class="text-caption">搜索请求的域名解析；内置 AliDNS / DNSPod / Cloudflare / 114DNS，可选可测速</v-card-subtitle>
+            <template #append>
+              <v-btn
+                color="primary"
+                variant="tonal"
+                size="small"
+                prepend-icon="mdi-speedometer"
+                :loading="dnsTesting"
+                @click="runDnsSpeedTest"
+              >
+                全部测速
+              </v-btn>
+            </template>
+          </v-card-item>
+          <v-list density="compact" class="px-2 pb-2">
+            <v-list-item
+              v-for="row in dnsRows"
+              :key="row.id"
+              :active="selectedDnsId === row.id"
+              rounded="xl"
+              class="mb-1"
+              @click="selectDns(row)"
+            >
+              <template #prepend>
+                <v-icon
+                  :icon="selectedDnsId === row.id ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
+                  :color="selectedDnsId === row.id ? 'primary' : 'grey'"
+                  size="20"
+                />
+              </template>
+              <v-list-item-title class="text-body-2 font-weight-medium">
+                {{ row.name }}
+                <v-chip v-if="row.builtin" size="x-small" color="primary" variant="tonal" class="ml-1">内置</v-chip>
+              </v-list-item-title>
+              <v-list-item-subtitle class="text-caption font-family-monospace">{{ row.base }}</v-list-item-subtitle>
+              <template #append>
+                <div class="d-flex align-center ga-2">
+                  <v-progress-circular
+                    v-if="row.testing"
+                    indeterminate
+                    size="18"
+                    width="2"
+                    color="primary"
+                    class="mr-1"
+                  />
+                  <v-chip
+                    v-else-if="row.speedChip"
+                    size="x-small"
+                    :color="row.speedChip.color"
+                    :variant="row.speedChip.icon === 'mdi-close' ? 'tonal' : 'flat'"
+                  >
+                    <v-icon :icon="row.speedChip.icon" size="13" class="mr-1" />
+                    {{ row.speedChip.text }}
+                  </v-chip>
+                  <v-btn
+                    v-if="!row.builtin"
+                    icon="mdi-delete-outline"
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    title="删除"
+                    @click.stop="removeDns(row)"
+                  />
+                </div>
+              </template>
+            </v-list-item>
+          </v-list>
+          <v-card-text class="pt-0">
+            <v-btn variant="text" color="secondary" size="small" prepend-icon="mdi-plus" @click="openAddDns">
+              添加自定义 DNS
+            </v-btn>
+            <div class="text-caption text-medium-emphasis mt-1">搜索请求经所选 DNS 解析；未配置时使用系统默认</div>
           </v-card-text>
         </v-card>
 
@@ -432,6 +593,27 @@ onMounted(async () => {
             </template>
           </v-card-item>
         </v-card>
+
+        <!-- 添加自定义 DNS 弹窗 -->
+        <v-dialog v-model="addDnsDialog" max-width="440">
+          <v-card rounded="lg">
+            <v-card-title class="text-subtitle-1 font-weight-bold">添加自定义 DNS</v-card-title>
+            <v-divider />
+            <v-card-text>
+              <v-text-field
+                v-model="newDnsBase"
+                label="DNS 服务器地址 *（IP 或 IP:端口）"
+                hide-details
+                placeholder="223.6.6.6"
+              />
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="addDnsDialog = false">取消</v-btn>
+              <v-btn color="primary" variant="flat" :disabled="!newDnsBase.trim()" @click="addDns">保存</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
 
         <!-- 添加自定义镜像弹窗（仅需填写链接，名称自动生成） -->
         <v-dialog v-model="addMirrorDialog" max-width="480">

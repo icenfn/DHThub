@@ -71,6 +71,24 @@ export interface GithubMirror {
   builtin?: boolean
 }
 
+/** DNS 服务器配置：base 为 IP 或 IP:端口 */
+export interface DnsServer {
+  id: string
+  name: string
+  base: string
+  /** 是否内置（内置不可删除） */
+  builtin?: boolean
+}
+
+/** DNS 测速结果 */
+export interface DnsSpeedResult {
+  id: string
+  name: string
+  base: string
+  latency: number | null
+  error: string | null
+}
+
 /** 镜像测速结果 */
 export interface MirrorSpeedResult {
   id: string

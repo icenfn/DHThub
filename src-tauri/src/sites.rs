@@ -68,11 +68,29 @@ impl SiteStore {
 
         let mut data = self.data.lock().await;
         data.subscribe_url = url.to_string();
-        data.subscribed = list.clone();
+        // 合并式订阅：已有站点保留用户开关并升级为最新定义，新站点追加（默认启用）
+        let existing: std::collections::HashMap<String, SiteConfig> = data
+            .subscribed
+            .iter()
+            .filter_map(|s| s.id.clone().map(|id| (id, s.clone())))
+            .collect();
+        let mut merged: Vec<SiteConfig> = Vec::with_capacity(list.len());
+        for site in list {
+            let id = site.id.clone().unwrap_or_default();
+            if let Some(old) = existing.get(&id) {
+                // 保留用户对旧站点的开关覆盖：只更新站点定义
+                let mut upd = site;
+                upd.enabled = old.enabled;
+                merged.push(upd);
+            } else {
+                merged.push(site);
+            }
+        }
+        data.subscribed = merged.clone();
         data.subscribed_at = Some(Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
-        // 订阅即默认启用：清空这些站点的开关覆盖，回落到源内 state（true）
+        // 新站点默认启用：清空其开关覆盖，回落到源内 state（true）
         let ids: std::collections::HashSet<String> =
-            list.iter().filter_map(|s| s.id.clone()).collect();
+            merged.iter().filter_map(|s| s.id.clone()).collect();
         data.enabled.retain(|k, _| !ids.contains(k));
         self.save(&data).await?;
         drop(data);

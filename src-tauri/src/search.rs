@@ -7,12 +7,11 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Semaphore;
 
-/// 最大并发请求数
-const MAX_CONCURRENCY: usize = 6;
-/// 每个站点请求失败后最多重试次数（磁力聚合为尽力而为，重试会拉长总耗时）
-const MAX_RETRY: u32 = 0;
+/// 最大并发请求数（站点多时并发拉满，减少整体耗时）
+const MAX_CONCURRENCY: usize = 8;
 
-/// 并发执行多站点搜索
+/// 并发执行多站点搜索：每站一个 tokio 任务 + 信号量限流，
+/// 任一站点失败/超时都不影响其他站点，结果按完成顺序返回
 pub async fn search_multi(
     client: &reqwest::Client,
     sites: Vec<SiteConfig>,
@@ -25,66 +24,72 @@ pub async fn search_multi(
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
     let keyword_enc = urlencoding::encode(keyword).to_string();
 
-    let tasks = sites.into_iter().map(|site| {
+    let mut tasks = tokio::task::JoinSet::new();
+    for site in sites {
         let client = client.clone();
         let semaphore = semaphore.clone();
-        let keyword = keyword.to_string();
         let keyword_enc = keyword_enc.clone();
-        async move {
-            let _permit = semaphore.acquire().await.unwrap();
-            search_one(&client, &site, &keyword, &keyword_enc, page).await
-        }
-    });
+        tasks.spawn(async move {
+            // 信号量关闭（不可能发生）时也继续执行，避免整批搜索卡死
+            let _permit = semaphore.acquire().await.ok();
+            search_one(&client, &site, &keyword_enc, page).await
+        });
+    }
 
-    futures::stream::iter(tasks)
-        .buffer_unordered(MAX_CONCURRENCY)
-        .collect::<Vec<_>>()
-        .await
+    let mut out = Vec::with_capacity(tasks.len());
+    while let Some(res) = tasks.join_next().await {
+        match res {
+            Ok(o) => out.push(o),
+            // 站点任务异常（如解析 panic）：单独失败，不影响整体
+            Err(e) => out.push(SiteOutcome {
+                site_id: String::new(),
+                site_name: "未知站点".into(),
+                success: false,
+                elapsed_ms: 0,
+                items: vec![],
+                error: Some(format!("任务异常: {e}")),
+                is_default: false,
+            }),
+        }
+    }
+    out
 }
 
-/// 单站点搜索
+/// 单站点搜索（一次性请求，不重试；尽力而为）
 async fn search_one(
     client: &reqwest::Client,
     site: &SiteConfig,
-    _keyword: &str,
     keyword_enc: &str,
     page: u32,
 ) -> SiteOutcome {
     let started = Instant::now();
     let url = build_url(site, keyword_enc, page);
+    let site_id = site.id.clone().unwrap_or_default();
+    let site_name = site.name.clone();
+    let is_default = site.is_default;
 
-    let mut last_err: Option<String> = None;
-    for attempt in 0..=MAX_RETRY {
-        match fetch_html(client, site, &url).await {
-            Ok(html) => {
-                let items = parse_html(&html, &site.expression_model);
-                return SiteOutcome {
-                    site_id: site.id.clone().unwrap_or_default(),
-                    site_name: site.name.clone(),
-                    success: true,
-                    elapsed_ms: started.elapsed().as_millis() as u64,
-                    items,
-                    error: None,
-                    is_default: site.is_default,
-                };
-            }
-            Err(e) => {
-                last_err = Some(e);
-                if attempt < MAX_RETRY {
-                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-                }
+    match fetch_html(client, site, &url).await {
+        Ok(html) => {
+            let items = parse_html(&html, &site.expression_model);
+            SiteOutcome {
+                site_id,
+                site_name,
+                success: true,
+                elapsed_ms: started.elapsed().as_millis() as u64,
+                items,
+                error: None,
+                is_default,
             }
         }
-    }
-
-    SiteOutcome {
-        site_id: site.id.clone().unwrap_or_default(),
-        site_name: site.name.clone(),
-        success: false,
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        items: vec![],
-        error: last_err,
-        is_default: site.is_default,
+        Err(e) => SiteOutcome {
+            site_id,
+            site_name,
+            success: false,
+            elapsed_ms: started.elapsed().as_millis() as u64,
+            items: vec![],
+            error: Some(e),
+            is_default,
+        },
     }
 }
 

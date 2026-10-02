@@ -77,7 +77,7 @@ async function doSearch(kw = keyword.value, p = 1) {
       keyword: k,
       siteIds: ids,
       page: p,
-      dns: settings.get('dnsServer'),
+      dns: settings.getSelectedDns()?.base ?? '',
     }, 60000)
     if (outcomes.value.length === 0) errorMsg.value = '没有启用的搜索源，请先到「搜索源」页订阅或启用'
   } catch (e) {

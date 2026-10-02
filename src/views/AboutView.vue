@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isTauri } from '../lib/tauri'
 import { RELEASES_PAGE_URL } from '../lib/update'
 
-const version = ref('0.3.6')
+const version = ref('0.3.7')
 
 onMounted(async () => {
   if (isTauri) {

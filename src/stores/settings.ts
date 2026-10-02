@@ -3,7 +3,8 @@
 import { reactive } from 'vue'
 import { isTauri } from '../lib/tauri'
 import { BUILTIN_MIRRORS, deriveMirrorName } from '../lib/mirrors'
-import type { GithubMirror, SettingsExportFile } from '../types'
+import { BUILTIN_DNS, deriveDnsName } from '../lib/dns'
+import type { DnsServer, GithubMirror, SettingsExportFile } from '../types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
@@ -19,8 +20,10 @@ export interface SettingsData {
   githubMirrorId: string
   /** 自动检测更新：启动时静默检查新版本，发现后提示条提醒 */
   autoCheckUpdate: boolean
-  /** 自定义 DNS 服务器（搜索请求用；留空使用系统默认） */
-  dnsServer: string
+  /** DNS 服务器列表（内置 + 自定义） */
+  dnsServers: DnsServer[]
+  /** 当前选中 DNS id（空 = 系统默认） */
+  dnsId: string
 }
 
 export const DEFAULT_SUBSCRIBE_URL =
@@ -50,7 +53,8 @@ const DEFAULTS: SettingsData = {
   githubMirrors: BUILTIN_MIRRORS.map((m) => ({ ...m })),
   githubMirrorId: 'direct',
   autoCheckUpdate: true,
-  dnsServer: '',
+  dnsServers: BUILTIN_DNS.map((d) => ({ ...d })),
+  dnsId: 'alidns',
 }
 
 class SettingsStore {
@@ -96,6 +100,7 @@ class SettingsStore {
       ...DEFAULTS,
       ...incoming,
       githubMirrors: DEFAULTS.githubMirrors.map((m) => ({ ...m })),
+      dnsServers: DEFAULTS.dnsServers.map((d) => ({ ...d })),
       searchHistory: Array.isArray(incoming.searchHistory)
         ? incoming.searchHistory.filter((x): x is string => typeof x === 'string').slice(0, 20)
         : [],
@@ -140,7 +145,35 @@ class SettingsStore {
       merged.githubMirrorId = merged.githubMirrors[0]?.id ?? 'direct'
     }
     if (typeof merged.autoCheckUpdate !== 'boolean') merged.autoCheckUpdate = true
-    if (typeof merged.dnsServer !== 'string') merged.dnsServer = ''
+    // DNS：内置 + 合法自定义，去重
+    const dnsSeen = new Set<string>()
+    merged.dnsServers.forEach((d) => {
+      if (d && typeof d.id === 'string' && typeof d.name === 'string' && typeof d.base === 'string' && !dnsSeen.has(d.id)) {
+        dnsSeen.add(d.id)
+      }
+    })
+    const dnsCustom = (Array.isArray(incoming.dnsServers) ? incoming.dnsServers : [])
+      .filter(
+        (d): d is DnsServer =>
+          !!d &&
+          typeof d.id === 'string' &&
+          typeof d.name === 'string' &&
+          typeof d.base === 'string' &&
+          !d.builtin &&
+          !dnsSeen.has(d.id) &&
+          /^[\d.:a-zA-Z]+$/.test(d.base),
+      )
+      .map((d) => ({ ...d }))
+    merged.dnsServers = [...merged.dnsServers, ...dnsCustom]
+    // 旧版本 dnsServer 字符串迁移为自定义项
+    const legacyDns = (incoming as Record<string, unknown>).dnsServer
+    if (typeof legacyDns === 'string' && legacyDns.trim() && !merged.dnsServers.some((d) => d.base === legacyDns.trim())) {
+      merged.dnsServers.push({ id: `d${Date.now().toString(36)}`, name: deriveDnsName(legacyDns.trim()), base: legacyDns.trim() })
+      merged.dnsId = merged.dnsServers[merged.dnsServers.length - 1].id
+    }
+    if (!merged.dnsServers.some((d) => d.id === merged.dnsId)) {
+      merged.dnsId = merged.dnsServers[0]?.id ?? ''
+    }
     return merged
   }
 
@@ -240,6 +273,50 @@ class SettingsStore {
     await this.persist()
   }
 
+  // ---------- DNS ----------
+
+  getDnsServers(): DnsServer[] {
+    return this.data.dnsServers
+  }
+
+  getSelectedDns(): DnsServer | null {
+    return this.data.dnsServers.find((d) => d.id === this.data.dnsId) ?? null
+  }
+
+  async selectDns(id: string) {
+    if (!this.data.dnsServers.some((d) => d.id === id)) return
+    this.data.dnsId = id
+    await this.persist()
+  }
+
+  async addDns(base: string): Promise<DnsServer> {
+    const v = base.trim()
+    if (!/^[\d.]+(:\d+)?$/i.test(v)) {
+      throw new Error('DNS 地址格式不正确（支持 IP 或 IP:端口）')
+    }
+    if (this.data.dnsServers.some((d) => d.base === v)) {
+      throw new Error('该 DNS 地址已存在')
+    }
+    const dns: DnsServer = {
+      id: `d${Date.now().toString(36)}`,
+      name: deriveDnsName(v),
+      base: v,
+    }
+    this.data.dnsServers = [...this.data.dnsServers, dns]
+    await this.persist()
+    return dns
+  }
+
+  async removeDns(id: string) {
+    const target = this.data.dnsServers.find((d) => d.id === id)
+    if (!target || target.builtin) return
+    this.data.dnsServers = this.data.dnsServers.filter((d) => d.id !== id)
+    if (this.data.dnsId === id) {
+      this.data.dnsId = this.data.dnsServers[0]?.id ?? ''
+    }
+    await this.persist()
+  }
+
   // ---------- 设置导出 / 导入 ----------
 
   /** 导出全部设置为 JSON 文本（含镜像配置） */
@@ -268,12 +345,13 @@ class SettingsStore {
     const merged = this.merge({ ...this.data, ...incoming } as Partial<SettingsData>)
     // 统计实际导入的字段数
     let imported = 0
-    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorId', 'autoCheckUpdate', 'dnsServer'] as const).forEach(
+    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorId', 'autoCheckUpdate', 'dnsId'] as const).forEach(
       (k) => {
         if (incoming[k] !== undefined) imported++
       },
     )
     if (Array.isArray(incoming.githubMirrors)) imported++
+    if (Array.isArray(incoming.dnsServers)) imported++
     Object.assign(this.data, merged)
     await this.persist()
     return imported

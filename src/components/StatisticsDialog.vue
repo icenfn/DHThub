@@ -8,20 +8,20 @@ function fmt(ms: number) {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`
 }
 
-const props = defineProps<{
+const { outcomes, keyword } = defineProps<{
   outcomes: SiteOutcome[]
   keyword: string
 }>()
 
-const totalElapsed = computed(() => props.outcomes.reduce((a, b) => a + b.elapsed_ms, 0))
-const successCount = computed(() => props.outcomes.filter((o) => o.success).length)
+const totalElapsed = computed(() => outcomes.reduce((a, b) => a + b.elapsed_ms, 0))
+const successCount = computed(() => outcomes.filter((o) => o.success).length)
 
 async function copyStats() {
-  const lines = props.outcomes.map(
+  const lines = outcomes.map(
     (o, i) =>
       `${i + 1}. ${o.site_name} [${o.success ? '成功' : '失败'}] ${o.items.length}条 ${fmt(o.elapsed_ms)}${o.error ? ` ${o.error}` : ''}`,
   )
-  const text = `DHThub 搜索统计（${props.keyword}）：${successCount.value}/${props.outcomes.length} 站成功，${props.outcomes.reduce((a, o) => a + o.items.length, 0)} 条结果，总耗时 ${fmt(totalElapsed.value)}\n${lines.join('\n')}`
+  const text = `DHThub 搜索统计（${keyword}）：${successCount.value}/${outcomes.length} 站成功，${outcomes.reduce((a, o) => a + o.items.length, 0)} 条结果，总耗时 ${fmt(totalElapsed.value)}\n${lines.join('\n')}`
   try {
     const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
     await writeText(text)
