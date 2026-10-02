@@ -141,21 +141,20 @@ jobs:
 
       - name: 仅保留 arm64 / armv7 ABI（apk 不编译 x86 / x86_64）
         run: |
-          python3 - <<'PYEOF'
-          import re
-          # Tauri 2.12 的 android init 模板把 4 个 ABI 硬编码进生成的 RustPlugin.kt
-          # （defaultAbiList / defaultArchList / targetsList），rustup targets 限制无效，
-          # 直接收紧这三份清单，gradle 只会创建 arm64 + arm 的 flavor 与编译任务。
-          p = 'src-tauri/gen/android/buildSrc/src/main/kotlin/RustPlugin.kt'
-          s = open(p, encoding='utf-8').read()
-          s = re.sub(r'val defaultAbiList = listOf\([^)]*\);', 'val defaultAbiList = listOf("arm64-v8a", "armeabi-v7a");', s, count=1)
-          s = re.sub(r'val defaultArchList = listOf\([^)]*\);', 'val defaultArchList = listOf("arm64", "arm");', s, count=1)
-          s = re.sub(r'listOf\("aarch64-linux-android"[^)]*\)', 'listOf("aarch64-linux-android", "armv7-linux-androideabi")', s, count=1)
-          for bad in ['"i686-linux-android"', '"x86_64-linux-android"', '"x86"', '"x86_64"']:
-              assert bad not in s, f'仍包含 {bad}'
-          open(p, 'w', encoding='utf-8').write(s)
-          print('RustPlugin.kt patched: 仅 arm64-v8a + armeabi-v7a')
-          PYEOF
+          # Tauri 2.12 的 rust gradle 插件通过 findProperty 读取
+          # abiList / archList / targetList（默认硬编码 4 个 ABI），
+          # 在 root 与 app 工程的 gradle.properties 写入覆盖值，只编译 arm64 + arm。
+          for f in src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties; do
+            touch "$f"
+            cat >> "$f" <<'EOF'
+
+# DHThub：只构建 arm64-v8a + armeabi-v7a，移除 x86 / x86_64
+abiList=arm64-v8a,armeabi-v7a
+archList=arm64,arm
+targetList=aarch64-linux-android,armv7-linux-androideabi
+EOF
+          done
+          grep -hE '^(abiList|archList|targetList)=' src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties
 
       - name: 覆盖 Android 图标为自定义图标（tauri init 使用模板默认图标，需用 icons/android 覆盖）
         run: |
