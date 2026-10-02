@@ -143,15 +143,18 @@ jobs:
         run: |
           python3 - <<'PYEOF'
           import re
-          p = 'src-tauri/gen/android/app/build.gradle.kts'
+          # Tauri 2.12 的 android init 模板把 4 个 ABI 硬编码进生成的 RustPlugin.kt
+          # （defaultAbiList / defaultArchList / targetsList），rustup targets 限制无效，
+          # 直接收紧这三份清单，gradle 只会创建 arm64 + arm 的 flavor 与编译任务。
+          p = 'src-tauri/gen/android/buildSrc/src/main/kotlin/RustPlugin.kt'
           s = open(p, encoding='utf-8').read()
-          # 将 abiFilters 固定为 arm64-v8a + armeabi-v7a（模板若含 x86/x86_64 一并移除）
-          pattern = re.compile(r'abiFilters\s*(\+?=)\s*listOf\([^)]*\)')
-          if pattern.search(s):
-              s = pattern.sub('abiFilters += listOf("arm64-v8a", "armeabi-v7a")', s)
+          s = re.sub(r'val defaultAbiList = listOf\([^)]*\);', 'val defaultAbiList = listOf("arm64-v8a", "armeabi-v7a");', s, count=1)
+          s = re.sub(r'val defaultArchList = listOf\([^)]*\);', 'val defaultArchList = listOf("arm64", "arm");', s, count=1)
+          s = re.sub(r'listOf\("aarch64-linux-android"[^)]*\)', 'listOf("aarch64-linux-android", "armv7-linux-androideabi")', s, count=1)
+          for bad in ['"i686-linux-android"', '"x86_64-linux-android"', '"x86"', '"x86_64"']:
+              assert bad not in s, f'仍包含 {bad}'
           open(p, 'w', encoding='utf-8').write(s)
-          m = re.search(r'abiFilters[^\n]*', s)
-          print('abiFilters now:', m.group(0) if m else '（未显式声明，默认仅编译已安装的 Rust 目标）')
+          print('RustPlugin.kt patched: 仅 arm64-v8a + armeabi-v7a')
           PYEOF
 
       - name: 覆盖 Android 图标为自定义图标（tauri init 使用模板默认图标，需用 icons/android 覆盖）

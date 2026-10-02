@@ -7,8 +7,9 @@ mod sites;
 mod update;
 
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
-use models::{SiteConfig, SiteOutcome, UpdateInfo};
+use models::{SiteConfig, SiteOutcome, UpdateCheckResult};
 use sites::SiteStore;
+use std::time::Duration;
 use tauri::Manager;
 
 /// 全局状态
@@ -30,6 +31,9 @@ impl AppState {
                     "DHThub/{env} (+https://github.com/icenfn/DHThub)",
                     env = env!("CARGO_PKG_VERSION")
                 ))
+                // DNS/建连挂起也有界，避免订阅/搜索等请求无限转圈
+                .connect_timeout(Duration::from_secs(8))
+                .timeout(Duration::from_secs(20))
                 .build()
                 .expect("构建 HTTP 客户端失败"),
             sites: SiteStore::new(app_data.clone()).await,
@@ -189,23 +193,13 @@ async fn clear_all_history(state: tauri::State<'_, AppState>) -> Result<(), Stri
 async fn check_update(
     state: tauri::State<'_, AppState>,
     mirror_base: Option<String>,
-) -> Result<UpdateInfo, String> {
+) -> Result<UpdateCheckResult, String> {
     update::check_update(
         &state.http,
         env!("CARGO_PKG_VERSION"),
         mirror_base.as_deref(),
     )
     .await
-}
-
-#[tauri::command]
-async fn download_apk(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-    url: String,
-    mirror_base: Option<String>,
-) -> Result<String, String> {
-    update::download_apk(app, &state.http, &url, mirror_base.as_deref()).await
 }
 
 // ---------- 应用启动 ----------
@@ -245,8 +239,6 @@ pub fn run() {
             clear_history,
             clear_all_history,
             check_update,
-            download_apk,
-            update::install_apk,
         ])
         .run(tauri::generate_context!())
         .expect("DHThub 启动失败");

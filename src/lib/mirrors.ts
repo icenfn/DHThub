@@ -1,7 +1,6 @@
 // GitHub 镜像工具：URL 转换、测速（测速为纯前端实现，参考 moretools 方案：
 // no-cors fetch + AbortController 超时，DNS/连接/响应头任一步超时都会立即返回）
 
-import { debugLog } from './debug'
 import type { GithubMirror, MirrorSpeedResult } from '../types'
 
 /** 内置 GitHub 镜像（2 个，不可删除；镜像列表仅展示链接） */
@@ -68,14 +67,11 @@ async function measureInFrontend(url: string, timeoutMs: number): Promise<number
 /** 单个镜像测速：返回耗时（毫秒）或错误（带超时兜底，永不挂起） */
 export async function speedTestMirror(mirror: GithubMirror): Promise<MirrorSpeedResult> {
   const url = mirrorUrl(mirror, MIRROR_PROBE_URL)
-  const label = mirror.base || '直连'
   try {
     const latency = await measureInFrontend(url, SPEED_TEST_TIMEOUT_MS)
-    debugLog(`[测速] ${label} → ${url}：${latency}ms`)
     return { id: mirror.id, name: mirror.name, base: mirror.base, latency, error: null }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    debugLog(`[测速] ${label} 失败：${msg}`)
     return { id: mirror.id, name: mirror.name, base: mirror.base, latency: null, error: msg }
   }
 }

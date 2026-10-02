@@ -4,7 +4,6 @@ import { invoke, isTauri } from '../lib/tauri'
 import { useSitesStore } from '../stores/sites'
 import { settings } from '../stores/settings'
 import { mirrorUrl, HOTWORDS_URL } from '../lib/mirrors'
-import { debugLog } from '../lib/debug'
 import type { MagnetItem, SiteOutcome } from '../types'
 import MagnetDetailDialog from '../components/MagnetDetailDialog.vue'
 import StatisticsDialog from '../components/StatisticsDialog.vue'
@@ -92,7 +91,6 @@ async function doSearch(kw = keyword.value, p = 1) {
     })
     if (outcomes.value.length === 0) errorMsg.value = '没有启用的搜索源，请先到「站点管理」订阅或启用'
   } catch (e) {
-    debugLog('[搜索] 失败：', e)
     errorMsg.value = String(e)
     outcomes.value = []
   } finally {
@@ -120,9 +118,7 @@ async function loadHotWords() {
       hotWords.value = (list as string[]).slice(0, 50)
       await settings.set('hotWords', hotWords.value) // 本地缓存
     }
-    debugLog(`[热词] 已更新 ${hotWords.value.length} 条（${url}）`)
-  } catch (e) {
-    debugLog('[热词] 抓取失败，使用本地缓存：', e)
+  } catch {
     /* 网络失败时沿用本地缓存 */
   }
 }

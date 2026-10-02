@@ -1,29 +1,23 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useDisplay, useTheme } from 'vuetify'
+// 应用外壳：仅承载全局逻辑（主题 / 镜像 / 更新提示 / 首启协议），页面框架由各路由页面自行提供
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { useTheme } from 'vuetify'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
 import { speedTestAll, pickFastest } from './lib/mirrors'
-import { debugLog } from './lib/debug'
-import UpdateDialog from './components/UpdateDialog.vue'
+import {
+  checkUpdate,
+  openReleasePage,
+  updateHasNew,
+  updateMsg,
+  updateToast,
+} from './lib/update'
 
 const theme = useTheme()
-const display = useDisplay()
 const router = useRouter()
-const route = useRoute()
 const showAgreement = ref(false)
 const mq = ref<MediaQueryList | null>(null)
-const updateOpen = ref(false)
-
-// 主导航：搜索 / 站点 / 历史（设置页为独立页面，经顶栏图标路由跳转）
-const navItems = [
-  { to: '/', icon: 'mdi-magnify', label: '搜索' },
-  { to: '/sites', icon: 'mdi-antenna', label: '站点' },
-  { to: '/history', icon: 'mdi-history', label: '历史' },
-]
-
-const isAgreementPage = computed(() => route.name === 'agreement' || route.name === 'disclaimer')
 
 async function applyTheme() {
   await settings.ready()
@@ -47,11 +41,7 @@ async function autoSelectMirror() {
   try {
     const results = await speedTestAll(settings.getMirrors())
     const best = pickFastest(results)
-    debugLog('[镜像] 自动测速结果：', results)
-    if (best) {
-      debugLog(`[镜像] 已自动选择：${best.base || '直连'}（${best.latency}ms）`)
-      await settings.selectMirror(best.id)
-    }
+    if (best) await settings.selectMirror(best.id)
   } catch {
     /* 静默失败 */
   }
@@ -68,8 +58,8 @@ async function init() {
   if (!settings.get('agreedVersion') && isTauri) {
     showAgreement.value = true
   } else if (isTauri && settings.get('autoCheckUpdate')) {
-    // 已同意过协议且开启自动更新：启动即静默检测
-    void silentCheckUpdate()
+    // 已同意过协议且开启自动更新：启动即静默检测（snackbar 提示）
+    void checkUpdate()
   }
   // 自动模式启动即测速选最快镜像（后台执行）
   void autoSelectMirror()
@@ -99,98 +89,13 @@ onBeforeUnmount(() => {
 async function acceptAgreement() {
   await settings.set('agreedVersion', '1')
   showAgreement.value = false
-  if (settings.get('autoCheckUpdate')) silentCheckUpdate()
-}
-
-// 启动静默更新检测：发现新版本才弹窗（使用当前选中镜像）
-async function silentCheckUpdate() {
-  if (!isTauri || !settings.get('autoCheckUpdate')) return
-  try {
-    const { invoke } = await import('./lib/tauri')
-    const mirror = settings.getSelectedMirror()
-    const info = await invoke<{ has_update: boolean }>('check_update', {
-      mirrorBase: mirror.base,
-    })
-    debugLog('[更新] 检测结果：', info)
-    if (info.has_update) updateOpen.value = true
-  } catch (e) {
-    debugLog('[更新] 检测失败：', e)
-    /* 静默失败不打扰用户 */
-  }
-}
-
-function go(to: string) {
-  router.push(to)
+  if (settings.get('autoCheckUpdate')) void checkUpdate()
 }
 </script>
 
 <template>
   <v-app>
-    <!-- MD3 顶部应用栏 -->
-    <v-app-bar v-if="!isAgreementPage" color="surface" border="b" height="56">
-      <template #prepend>
-        <div class="d-flex align-center ml-2">
-          <v-icon icon="mdi-flash-outline" color="primary" size="28" />
-        </div>
-      </template>
-      <v-app-bar-title>
-        <span class="text-subtitle-1 font-weight-bold">DHThub</span>
-        <span class="text-caption text-medium-emphasis ml-2 d-none d-sm-inline">磁力聚合搜索</span>
-      </v-app-bar-title>
-      <template #append>
-        <v-btn icon="mdi-update" title="检查更新" variant="text" @click="updateOpen = true" />
-        <v-btn
-          icon="mdi-cog-outline"
-          title="设置"
-          variant="text"
-          :active="route.path === '/settings'"
-          @click="go('/settings')"
-        />
-      </template>
-    </v-app-bar>
-
-    <!-- 桌面端导航抽屉 -->
-    <v-navigation-drawer
-      v-if="!isAgreementPage && !display.mobile.value"
-      width="216"
-      :permanent="true"
-      color="surface"
-    >
-      <v-divider class="mx-4 mt-2" />
-      <v-list nav density="comfortable" class="px-2 py-2">
-        <v-list-item
-          v-for="item in navItems"
-          :key="item.to"
-          :active="route.path === item.to"
-          :prepend-icon="item.icon"
-          :title="item.label"
-          rounded="xl"
-          @click="go(item.to)"
-        />
-      </v-list>
-      <template #append>
-        <div class="pa-4 text-caption text-medium-emphasis">v0.2.5 · GitHub 发布</div>
-      </template>
-    </v-navigation-drawer>
-
-    <v-main class="pb-16 pb-sm-0">
-      <router-view />
-    </v-main>
-
-    <!-- 移动端底部导航 -->
-    <v-bottom-navigation
-      v-if="!isAgreementPage && display.mobile.value"
-      :model-value="route.path"
-      color="primary"
-      grow
-    >
-      <v-btn v-for="item in navItems" :key="item.to" :value="item.to" @click="go(item.to)">
-        <v-icon>{{ item.icon }}</v-icon>
-        {{ item.label }}
-      </v-btn>
-    </v-bottom-navigation>
-
-    <UpdateDialog v-model="updateOpen" />
+    <router-view />
 
     <!-- 首启协议 -->
     <v-dialog v-model="showAgreement" persistent max-width="560" :scrim="true">
@@ -219,5 +124,22 @@ function go(to: string) {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- 更新检测提示（snackbar，替代更新弹窗） -->
+    <v-snackbar
+      v-model="updateToast"
+      location="bottom"
+      multi-line
+      :timeout="updateHasNew ? 8000 : 2500"
+      color="surface"
+    >
+      <div class="d-flex align-center ga-2">
+        <v-icon :icon="updateHasNew ? 'mdi-update' : 'mdi-check-circle'" :color="updateHasNew ? 'primary' : 'success'" size="20" />
+        <span class="text-body-2">{{ updateMsg }}</span>
+      </div>
+      <template v-if="updateHasNew" #actions>
+        <v-btn color="primary" variant="text" size="small" @click="openReleasePage">前往下载</v-btn>
+      </template>
+    </v-snackbar>
   </v-app>
 </template>

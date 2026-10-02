@@ -3,7 +3,6 @@
 import { reactive } from 'vue'
 import { isTauri } from '../lib/tauri'
 import { BUILTIN_MIRRORS, deriveMirrorName } from '../lib/mirrors'
-import { setDebug } from '../lib/debug'
 import type { GithubMirror, SettingsExportFile } from '../types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -22,10 +21,8 @@ export interface SettingsData {
   githubMirrorMode: MirrorMode
   /** 当前选中镜像 id */
   githubMirrorId: string
-  /** 自动检测更新：启动时静默检查新版本，发现后弹窗提醒 */
+  /** 自动检测更新：启动时静默检查新版本，发现后提示条提醒 */
   autoCheckUpdate: boolean
-  /** 调试模式：开启后输出详细日志与测速错误信息 */
-  debug: boolean
 }
 
 export const DEFAULT_SUBSCRIBE_URL =
@@ -57,7 +54,6 @@ const DEFAULTS: SettingsData = {
   githubMirrorMode: 'manual',
   githubMirrorId: 'direct',
   autoCheckUpdate: true,
-  debug: false,
 }
 
 class SettingsStore {
@@ -81,7 +77,6 @@ class SettingsStore {
           /* ignore */
         }
       }
-      setDebug(this.data.debug)
       this.loaded = true
     }
   }
@@ -95,7 +90,6 @@ class SettingsStore {
     } catch {
       /* ignore */
     }
-    setDebug(this.data.debug)
     this.loaded = true
   }
 
@@ -152,7 +146,6 @@ class SettingsStore {
       merged.githubMirrorId = merged.githubMirrors[0]?.id ?? 'direct'
     }
     if (typeof merged.autoCheckUpdate !== 'boolean') merged.autoCheckUpdate = true
-    if (typeof merged.debug !== 'boolean') merged.debug = false
     return merged
   }
 
@@ -183,7 +176,6 @@ class SettingsStore {
 
   async set<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
     this.data[key] = value
-    if (key === 'debug') setDebug(value as boolean)
     await this.persist()
   }
 
@@ -286,7 +278,7 @@ class SettingsStore {
     const merged = this.merge({ ...this.data, ...incoming } as Partial<SettingsData>)
     // 统计实际导入的字段数
     let imported = 0
-    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorMode', 'githubMirrorId', 'autoCheckUpdate', 'debug'] as const).forEach(
+    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorMode', 'githubMirrorId', 'autoCheckUpdate'] as const).forEach(
       (k) => {
         if (incoming[k] !== undefined) imported++
       },

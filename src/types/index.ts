@@ -60,19 +60,11 @@ export interface HistoryEntry {
   time: number
 }
 
-export interface AssetInfo {
-  name: string
-  url: string
-  size: number
-}
-
-export interface UpdateInfo {
+/** 更新检测结果（releases/latest 重定向解析） */
+export interface UpdateCheckResult {
   current_version: string
   latest_version: string
   has_update: boolean
-  notes: string
-  published_at: string
-  assets: Record<string, AssetInfo[]>
 }
 
 export type HistoryKind = 'magnet' | 'copy' | 'browse'

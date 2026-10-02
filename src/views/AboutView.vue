@@ -2,10 +2,9 @@
 import { onMounted, ref } from 'vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke, isTauri } from '../lib/tauri'
-import UpdateDialog from '../components/UpdateDialog.vue'
+import { checkUpdate, updateChecking } from '../lib/update'
 
-const version = ref('0.2.1')
-const updateOpen = ref(false)
+const version = ref('0.2.6')
 
 onMounted(async () => {
   if (isTauri) {
@@ -43,7 +42,7 @@ async function openRepo() {
           <br />Linux / Windows / Android 三端，GitHub Actions 自动构建发布
         </div>
         <div class="d-flex ga-2 mt-4">
-          <v-btn variant="tonal" color="primary" prepend-icon="mdi-update" @click="updateOpen = true">
+          <v-btn variant="tonal" color="primary" prepend-icon="mdi-update" :loading="updateChecking" @click="checkUpdate">
             检查更新
           </v-btn>
           <v-btn variant="tonal" color="secondary" prepend-icon="mdi-github" @click="openRepo">
@@ -57,6 +56,5 @@ async function openRepo() {
         <a class="text-primary" href="javascript:void(0)" @click="$router.push('/disclaimer')">免责声明</a>
       </div>
     </v-card>
-    <UpdateDialog v-model="updateOpen" />
   </div>
 </template>

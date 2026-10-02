@@ -138,20 +138,10 @@ pub struct HistoryEntry {
     pub time: u64,
 }
 
-/// 更新信息
+/// 更新检测结果（releases/latest 重定向解析）
 #[derive(Debug, Clone, Serialize, Default)]
-pub struct UpdateInfo {
+pub struct UpdateCheckResult {
     pub current_version: String,
     pub latest_version: String,
     pub has_update: bool,
-    pub notes: String,
-    pub published_at: String,
-    pub assets: HashMap<String, Vec<AssetInfo>>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AssetInfo {
-    pub name: String,
-    pub url: String,
-    pub size: u64,
 }

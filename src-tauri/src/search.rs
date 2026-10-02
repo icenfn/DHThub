@@ -97,10 +97,14 @@ fn build_url(site: &SiteConfig, keyword_enc: &str, page: u32) -> String {
 }
 
 /// 发起请求并取回 HTML 文本
-async fn fetch_html(client: &reqwest::Client, site: &SiteConfig, url: &str) -> Result<String, String> {
-    let mut req = client
-        .get(url)
-        .timeout(std::time::Duration::from_millis(site.request.timeout_ms.max(3000)));
+async fn fetch_html(
+    client: &reqwest::Client,
+    site: &SiteConfig,
+    url: &str,
+) -> Result<String, String> {
+    let mut req = client.get(url).timeout(std::time::Duration::from_millis(
+        site.request.timeout_ms.max(3000),
+    ));
 
     let mut headers = site.request.headers.clone();
     headers
@@ -122,7 +126,10 @@ async fn fetch_html(client: &reqwest::Client, site: &SiteConfig, url: &str) -> R
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    let text = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {e}"))?;
     if text.trim().is_empty() {
         return Err("空响应".into());
     }
@@ -156,7 +163,8 @@ fn extract_placeholder(template: &str, final_url: &str, placeholder: &str) -> Op
     let before = &template[..idx];
     let after = &template[idx + placeholder.len()..];
     let rest = final_url.strip_prefix(before)?;
-    let end = after.find(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-' && c != '_' && c != '~');
+    let end = after
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-' && c != '_' && c != '~');
     let value = match end {
         Some(e) => &rest[..e],
         None => rest,
@@ -229,7 +237,13 @@ pub async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String, S
     let resp = client
         .get(url)
         .timeout(std::time::Duration::from_secs(12))
-        .header("User-Agent", format!("DHThub/{env} (+https://github.com/icenfn/DHThub)", env = env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            format!(
+                "DHThub/{env} (+https://github.com/icenfn/DHThub)",
+                env = env!("CARGO_PKG_VERSION")
+            ),
+        )
         .send()
         .await
         .map_err(|e| format!("请求失败: {e}"))?;

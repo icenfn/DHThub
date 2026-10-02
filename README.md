@@ -14,6 +14,8 @@
 
 ## 功能清单（已实现）
 
+> **v0.2.6**：更新检测改用 `releases/latest` 轻量实现（去掉更新弹窗，统一改用提示条 snackbar 提示，含自动检测）；修复 Android 仍编译 x86/x86_64 的问题（直接收紧 gradle 的 cargo.targets 并注入 abiFilters，仅 arm64/armv7）；**删除调试模式**；App.vue 不再写死页面框架（主框架抽为 AppLayout 嵌套路由，设置页使用独立页面框架）；修复订阅在线仓库拉取一直转圈（Rust HTTP 客户端增加 connect 超时 + 前端 IPC 超时兜底）。
+
 > **v0.2.5**：设置页独立路由（Vue Router 跳转）；新增**自动检测更新**开关与**调试模式**；镜像测速重构为**纯前端实现**（no-cors + 超时兜底，不再转圈无结果）；移除 ghfast.top 内置镜像，镜像列表仅显示链接、直连带「直连」标签、添加镜像无需填写名称；历史记录仅保留**浏览记录**；打包目标调整（不再产出 AppImage / MSI，APK 仅 arm64 + armv7）。
 
 > **v0.2.0**：UI 全面升级至 Vuetify 4 + Material Design 3（完整 MD3 色彩 token、顶栏布局）；新增独立设置页的 **GitHub 镜像** 配置（内置 2 个、可自定义、一键测速、手动/自动选最快），用于检查更新与订阅源拉取；新增**设置导出/导入**（JSON 备份恢复）。
@@ -27,8 +29,8 @@
 | A4 | 磁力操作 | 复制、打开（系统处理）、分享、详情弹窗 |
 | A5 | 搜索历史+热词 | 本地 20 条历史、热词「换一换」、清空 |
 | A6 | 浏览历史页 | 仅记录浏览（详情查看）记录，去重、上限 500、清空 |
-| A7 | GitHub 更新检测 | Release 检查（支持镜像）、桌面自动更新、Android APK 下载安装（支持镜像）、启动自动检测（可开关） |
-| A8 | 设置页 | MD3 界面：主题、GitHub 镜像（内置 2 个/自定义/测速/手动或自动选最快）、自动更新开关、调试模式、设置导出导入（JSON）、热词管理、数据清除、订阅源、关于 |
+| A7 | GitHub 更新检测 | releases/latest 轻量检查（支持镜像、提示条提示）、启动自动检测（可开关） |
+| A8 | 设置页 | 独立页面框架：主题、GitHub 镜像（内置 2 个/自定义/测速/手动或自动选最快）、自动更新开关、设置导出导入（JSON）、热词管理、数据清除、订阅源、关于 |
 | A9 | Actions 三端发布 | tag v* 触发，Linux/Windows/Android 自动打包 + Release |
 
 ### B 已选
@@ -144,7 +146,7 @@ cargo tauri android build --apk --split-per-abi
 
 - 全部数据本地存储（`app_data/sites.json`、`history.json`、`settings.json`），无账号、无遥测、无广告 SDK
 - 权限收敛：仅网络、剪贴板、打开外部链接、安装 APK（Android）等必要项
-- 更新检测仅访问 `api.github.com/repos/icenfn/DHThub` 官方接口
+- 更新检测仅访问 `github.com/icenfn/DHThub/releases/latest`（官方页面）
 
 ## 免责声明
 

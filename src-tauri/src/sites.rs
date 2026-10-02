@@ -42,14 +42,20 @@ impl SiteStore {
     }
 
     /// 拉取订阅源并替换 subscribed 列表
-    pub async fn subscribe(&self, client: &reqwest::Client, url: &str) -> Result<Vec<SiteConfig>, String> {
+    pub async fn subscribe(
+        &self,
+        client: &reqwest::Client,
+        url: &str,
+    ) -> Result<Vec<SiteConfig>, String> {
         let text = crate::search::fetch_text(client, url).await?;
-        let parsed: Value = serde_json::from_str(&text).map_err(|e| format!("订阅源 JSON 解析失败: {e}"))?;
+        let parsed: Value =
+            serde_json::from_str(&text).map_err(|e| format!("订阅源 JSON 解析失败: {e}"))?;
 
         let mut list: Vec<SiteConfig> = if parsed.is_array() {
             serde_json::from_value(parsed).map_err(|e| format!("站点列表格式错误: {e}"))?
         } else if parsed.get("sites").is_some() {
-            serde_json::from_value(parsed["sites"].clone()).map_err(|e| format!("站点列表格式错误: {e}"))?
+            serde_json::from_value(parsed["sites"].clone())
+                .map_err(|e| format!("站点列表格式错误: {e}"))?
         } else {
             return Err("订阅源中未找到站点数组".into());
         };
@@ -68,7 +74,8 @@ impl SiteStore {
         // 清理已不存在的订阅站开关
         let ids: std::collections::HashSet<String> =
             list.iter().filter_map(|s| s.id.clone()).collect();
-        data.enabled.retain(|k, _| ids.contains(k) || !k.starts_with('s'));
+        data.enabled
+            .retain(|k, _| ids.contains(k) || !k.starts_with('s'));
         self.save(&data).await?;
         drop(data);
         Ok(build_merged(&*self.data.lock().await))
@@ -84,8 +91,14 @@ impl SiteStore {
         let next = data.custom.len() + 1;
         let mut id = format!("c{next}");
         loop {
-            if data.subscribed.iter().any(|s| s.id.as_deref() == Some(id.as_str()))
-                || data.custom.iter().any(|s| s.id.as_deref() == Some(id.as_str()))
+            if data
+                .subscribed
+                .iter()
+                .any(|s| s.id.as_deref() == Some(id.as_str()))
+                || data
+                    .custom
+                    .iter()
+                    .any(|s| s.id.as_deref() == Some(id.as_str()))
             {
                 id = format!("c{}", next + data.custom.len());
             } else {
@@ -106,7 +119,11 @@ impl SiteStore {
     pub async fn update_custom(&self, site: SiteConfig) -> Result<Vec<SiteConfig>, String> {
         let mut data = self.data.lock().await;
         let id = site.id.clone().unwrap_or_default();
-        if let Some(idx) = data.custom.iter().position(|s| s.id.as_deref() == Some(id.as_str())) {
+        if let Some(idx) = data
+            .custom
+            .iter()
+            .position(|s| s.id.as_deref() == Some(id.as_str()))
+        {
             data.custom[idx] = site;
         } else {
             return Err("未找到该自定义站点".into());
@@ -199,13 +216,21 @@ fn build_merged(data: &SitesData) -> Vec<SiteConfig> {
     let mut merged: Vec<SiteConfig> = Vec::new();
     for mut s in data.subscribed.clone() {
         s.is_custom = false;
-        s.enabled = data.enabled.get(s.id.as_deref().unwrap_or("")).copied().unwrap_or(s.state);
+        s.enabled = data
+            .enabled
+            .get(s.id.as_deref().unwrap_or(""))
+            .copied()
+            .unwrap_or(s.state);
         s.is_default = data.default_id.as_deref() == Some(s.id.as_deref().unwrap_or(""));
         merged.push(s);
     }
     for mut s in data.custom.clone() {
         s.is_custom = true;
-        s.enabled = data.enabled.get(s.id.as_deref().unwrap_or("")).copied().unwrap_or(true);
+        s.enabled = data
+            .enabled
+            .get(s.id.as_deref().unwrap_or(""))
+            .copied()
+            .unwrap_or(true);
         s.is_default = data.default_id.as_deref() == Some(s.id.as_deref().unwrap_or(""));
         merged.push(s);
     }

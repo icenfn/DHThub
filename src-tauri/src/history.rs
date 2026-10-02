@@ -65,7 +65,12 @@ impl HistoryStore {
     }
 
     pub async fn list(&self, kind: &str) -> Vec<HistoryEntry> {
-        self.data.lock().await.get(kind).cloned().unwrap_or_default()
+        self.data
+            .lock()
+            .await
+            .get(kind)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub async fn clear(&self, kind: &str) -> Result<(), String> {

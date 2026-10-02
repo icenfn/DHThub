@@ -103,7 +103,7 @@ async function doSubscribe() {
       const mirror = settings.getSelectedMirror()
       const realUrl = mirrorUrl(mirror, url)
       const sites = await sitesStore.subscribe(realUrl)
-      notice(`订阅成功：${sites.length} 个搜索源${mirror.base ? `（经 ${mirror.name}）` : ''}`)
+      notice(`订阅成功：${sites.length} 个搜索源${mirror.base ? `（经 ${mirror.base}）` : ''}`)
     } finally {
       subscribing.value = false
     }
