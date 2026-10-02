@@ -1,15 +1,33 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SiteOutcome } from '../types'
-
-defineProps<{
-  outcomes: SiteOutcome[]
-  keyword: string
-}>()
 
 const model = defineModel<boolean>({ required: true })
 
 function fmt(ms: number) {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`
+}
+
+const props = defineProps<{
+  outcomes: SiteOutcome[]
+  keyword: string
+}>()
+
+const totalElapsed = computed(() => props.outcomes.reduce((a, b) => a + b.elapsed_ms, 0))
+const successCount = computed(() => props.outcomes.filter((o) => o.success).length)
+
+async function copyStats() {
+  const lines = props.outcomes.map(
+    (o, i) =>
+      `${i + 1}. ${o.site_name} [${o.success ? '成功' : '失败'}] ${o.items.length}条 ${fmt(o.elapsed_ms)}${o.error ? ` ${o.error}` : ''}`,
+  )
+  const text = `DHThub 搜索统计（${props.keyword}）：${successCount.value}/${props.outcomes.length} 站成功，${props.outcomes.reduce((a, o) => a + o.items.length, 0)} 条结果，总耗时 ${fmt(totalElapsed.value)}\n${lines.join('\n')}`
+  try {
+    const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
+    await writeText(text)
+  } catch {
+    /* 浏览器预览忽略 */
+  }
 }
 </script>
 
@@ -23,7 +41,7 @@ function fmt(ms: number) {
       <v-card-text>
         <p class="text-body-2 mb-3">
           关键词：<strong>{{ keyword }}</strong>
-          <span class="text-medium-emphasis">（{{ outcomes.filter((o) => o.success).length }}/{{ outcomes.length }} 站成功）</span>
+          <span class="text-medium-emphasis">（{{ successCount }}/{{ outcomes.length }} 站成功 · 总耗时 {{ fmt(totalElapsed) }}）</span>
         </p>
         <v-table density="compact">
           <thead>
@@ -33,6 +51,7 @@ function fmt(ms: number) {
               <th>结果数</th>
               <th>耗时</th>
               <th>状态</th>
+              <th>错误信息</th>
             </tr>
           </thead>
           <tbody>
@@ -46,6 +65,9 @@ function fmt(ms: number) {
                   {{ o.success ? '成功' : '失败' }}
                 </v-chip>
               </td>
+              <td class="text-caption text-medium-emphasis" style="max-width: 220px">
+                <span class="text-truncate d-block" :title="o.error || ''">{{ o.success ? '—' : o.error }}</span>
+              </td>
             </tr>
           </tbody>
         </v-table>
@@ -53,6 +75,7 @@ function fmt(ms: number) {
       </v-card-text>
       <v-card-actions>
         <v-spacer />
+        <v-btn variant="tonal" color="secondary" prepend-icon="mdi-content-copy" @click="copyStats">复制统计</v-btn>
         <v-btn color="primary" variant="flat" @click="model = false">关闭</v-btn>
       </v-card-actions>
     </v-card>

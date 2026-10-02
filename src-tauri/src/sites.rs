@@ -113,18 +113,28 @@ impl SiteStore {
         Ok(merged)
     }
 
-    /// 更新自定义站点
+    /// 更新站点：订阅源与自定义站点均可修改（保留原归属标记）
     pub async fn update_custom(&self, site: SiteConfig) -> Result<Vec<SiteConfig>, String> {
         let mut data = self.data.lock().await;
         let id = site.id.clone().unwrap_or_default();
+        let mut found = false;
         if let Some(idx) = data
             .custom
             .iter()
             .position(|s| s.id.as_deref() == Some(id.as_str()))
         {
             data.custom[idx] = site;
-        } else {
-            return Err("未找到该自定义站点".into());
+            found = true;
+        } else if let Some(idx) = data
+            .subscribed
+            .iter()
+            .position(|s| s.id.as_deref() == Some(id.as_str()))
+        {
+            data.subscribed[idx] = site;
+            found = true;
+        }
+        if !found {
+            return Err("未找到该站点".into());
         }
         let merged = build_merged(&data);
         self.save(&data).await?;

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.6
+
+- 回退 v0.3.5 的状态栏/导航栏颜色适配（移除 jni/ndk-context 依赖与系统栏命令，恢复原生系统栏）
+- 修复搜索源列表长按菜单弹出位置错误：改用 v-menu activator 锚定触发的卡片元素，PC 右键同样修正
+- 修复搜索源列表超长时挤压底部 tab：根因是 z-swiper/z-swiper-item 自定义元素默认 display:inline，height:100% 被忽略导致内容撑高，改为 display:block 并禁止底部栏被 flex 压缩
+- 搜索源长按（右键）菜单新增「修改」选项：订阅源与自定义站点均可直接编辑保存（Rust 更新逻辑扩展到 subscribed 列表）
+- 新增自定义 DNS 设置（设置-通用）：搜索请求经指定 DNS 解析（hickory-resolver 覆盖 reqwest 解析、保留 TLS SNI），留空使用系统默认
+- 新增搜索源：SKR BT（https://skrbtdo.cc/，WordPress 模板尽力适配）
+- 搜索结果页删除「过滤标题」功能（保留排序）；搜索统计增强：逐站错误信息列、总耗时、一键复制统计文本便于排查
+- 版本号 0.3.5 -> 0.3.6
+
 ## v0.3.5
 
 - 搜索源页：删除页内「搜索源」标题（保留应用栏 tab）；修复订阅源管理悬浮按钮图标（mdi-download-cloud-outline 不存在 -> mdi-cloud-download-outline）

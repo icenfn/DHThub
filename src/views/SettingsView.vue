@@ -12,6 +12,7 @@ import type { GithubMirror, MirrorSpeedResult } from '../types'
 const sitesStore = useSitesStore()
 const themeMode = ref<'system' | 'light' | 'dark'>('system')
 const autoCheck = ref(true)
+const dnsServer = ref('')
 const toast = ref('')
 const showToast = ref(false)
 const clearing = ref(false)
@@ -65,6 +66,11 @@ async function saveTheme(v: 'system' | 'light' | 'dark') {
 }
 
 // ---------- 更新 ----------
+async function saveDns(v: string) {
+  dnsServer.value = v.trim()
+  await settings.set('dnsServer', dnsServer.value)
+}
+
 async function saveAutoCheck(v: boolean) {
   autoCheck.value = v
   await settings.set('autoCheckUpdate', v)
@@ -192,6 +198,7 @@ async function doImportSettings() {
     // 重新同步页面状态
     themeMode.value = settings.get('theme')
     autoCheck.value = settings.get('autoCheckUpdate')
+    dnsServer.value = settings.get('dnsServer')
     await refreshMirrors()
     notice(`设置导入成功（${count} 项）`)
   } catch (e) {
@@ -260,6 +267,19 @@ onMounted(async () => {
               </div>
               <v-switch :model-value="autoCheck" color="primary" hide-details @update:model-value="saveAutoCheck(!!$event)" />
             </div>
+            <v-divider class="my-2" />
+            <div class="text-subtitle-2 font-weight-bold mb-1">自定义 DNS</div>
+            <v-text-field
+              :model-value="dnsServer"
+              label="DNS 服务器（搜索请求使用）"
+              placeholder="223.5.5.5 / 8.8.8.8"
+              variant="outlined"
+              density="compact"
+              hide-details
+              hint="留空使用系统默认；可解决个别搜索源域名解析失败问题"
+              persistent-hint
+              @update:model-value="saveDns($event)"
+            />
             <v-btn
               color="primary"
               variant="tonal"

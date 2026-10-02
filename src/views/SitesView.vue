@@ -22,32 +22,38 @@ const editing = ref<SiteConfig | null>(null)
 const form = ref<SiteConfig>(emptyForm())
 
 // 长按（手机）/ 右键（PC）上下文菜单 + 删除二次确认
-const contextMenu = ref<{ show: boolean; x: number; y: number; site: SiteConfig | null }>({
-  show: false,
-  x: 0,
-  y: 0,
-  site: null,
-})
+// 菜单用 activator 锚定到触发的卡片元素，保证弹出位置正确
+const contextMenu = ref<{ show: boolean; site: SiteConfig | null }>({ show: false, site: null })
+const menuActivator = ref<Element | null>(null)
 const deleteDialog = ref(false)
 const deletingSite = ref<SiteConfig | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
 
-function openContextMenu(site: SiteConfig, x: number, y: number) {
+const rowEls = new Map<string, Element>()
+
+function collectRowEl(siteId: string | undefined, el: Element | null) {
+  if (!siteId) return
+  if (el) rowEls.set(siteId, el)
+  else rowEls.delete(siteId)
+}
+
+function openContextMenu(site: SiteConfig, el: Element) {
   if (longPressTimer) {
     clearTimeout(longPressTimer)
     longPressTimer = null
   }
-  contextMenu.value = { show: true, x, y, site }
+  menuActivator.value = rowEls.get(site.id ?? '') ?? el
+  contextMenu.value = { show: true, site }
 }
 
 function onRowContextmenu(site: SiteConfig, e: MouseEvent) {
-  openContextMenu(site, e.clientX, e.clientY)
+  openContextMenu(site, e.currentTarget as Element)
 }
 
 function onRowTouchstart(site: SiteConfig, e: TouchEvent) {
   const t = e.touches[0]
   if (!t) return
-  longPressTimer = setTimeout(() => openContextMenu(site, t.clientX, t.clientY), 500)
+  longPressTimer = setTimeout(() => openContextMenu(site, e.currentTarget as Element), 500)
 }
 
 function cancelLongPress() {
@@ -60,7 +66,7 @@ function cancelLongPress() {
 function editFromMenu() {
   const site = contextMenu.value.site
   contextMenu.value.show = false
-  if (site?.is_custom) openEdit(site)
+  if (site) openEdit(site)
 }
 
 function askDelete() {
@@ -215,7 +221,7 @@ function openEdit(site: SiteConfig) {
 async function saveSite() {
   await run(async () => {
     collectFormHelpers()
-    if (editing.value?.is_custom) {
+    if (editing.value) {
       await sitesStore.updateCustom(form.value)
       notice('站点已更新')
     } else {
@@ -302,6 +308,7 @@ onMounted(async () => {
     <v-card
       v-for="site in sitesStore.sites"
       :key="site.id"
+      :ref="(el) => collectRowEl(site.id, el as Element | null)"
       rounded="lg"
       class="mb-2"
       @contextmenu.prevent="onRowContextmenu(site, $event)"
@@ -385,19 +392,9 @@ onMounted(async () => {
     />
 
     <!-- 长按 / 右键上下文菜单 -->
-    <v-menu
-      v-model="contextMenu.show"
-      :position-x="contextMenu.x"
-      :position-y="contextMenu.y"
-      min-width="200"
-    >
+    <v-menu v-model="contextMenu.show" :activator="menuActivator || undefined" min-width="200">
       <v-list density="compact" nav>
-        <v-list-item
-          v-if="contextMenu.site?.is_custom"
-          prepend-icon="mdi-pencil-outline"
-          title="编辑"
-          @click="editFromMenu"
-        />
+        <v-list-item prepend-icon="mdi-pencil-outline" title="修改" @click="editFromMenu" />
         <v-list-item
           :prepend-icon="contextMenu.site?.is_default ? 'mdi-star-off-outline' : 'mdi-star-outline'"
           :title="contextMenu.site?.is_default ? '取消默认搜索源' : '设为默认搜索源'"

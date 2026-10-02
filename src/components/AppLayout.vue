@@ -85,7 +85,7 @@ function goTab(i: number) {
       mandatory
       height="64"
       class="d-sm-none"
-      style="position: static; width: 100%; padding-bottom: env(safe-area-inset-bottom)"
+      style="position: static; width: 100%; padding-bottom: env(safe-area-inset-bottom); flex-shrink: 0"
       @update:model-value="goTab(Number($event))"
     >
       <v-btn v-for="(t, i) in titles" :key="i">
@@ -100,6 +100,18 @@ function goTab(i: number) {
 .swiper-page-container {
   overflow-y: auto;
   overflow-x: hidden;
+  height: 100%;
+}
+
+/* 自定义元素默认 display:inline，height:100% 会被忽略导致内容撑高、挤压底部栏 */
+z-swiper,
+z-swiper-item {
+  display: block;
+}
+z-swiper {
+  height: 100%;
+}
+z-swiper-item {
   height: 100%;
 }
 

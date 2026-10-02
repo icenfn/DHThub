@@ -1,6 +1,6 @@
 [package]
 name = "dhthub"
-version = "0.3.5"
+version = "0.3.6"
 description = "DHThub - 多源磁力链接聚合搜索"
 authors = ["DHThub"]
 edition = "2021"
@@ -23,13 +23,12 @@ tauri-plugin-fs = "2.6.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls", "webpki-roots", "gzip", "brotli", "deflate", "stream"] }
+hickory-resolver = "0.24"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "fs"] }
 scraper = "0.27"
 futures = "0.3"
 urlencoding = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-ndk-context = "0.1"
-jni = "0.21"
 
 [profile.release]
 codegen-units = 1

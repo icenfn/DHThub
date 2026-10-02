@@ -5,7 +5,6 @@ import { useTheme } from 'vuetify'
 import { useMediaQuery } from '@vueuse/core'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
-import { applySystemBarTheme } from './lib/sysbar'
 import {
   checkUpdate,
   openReleasePage,
@@ -39,14 +38,10 @@ async function applyTheme() {
   } else {
     theme.change(mode)
   }
-  void applySystemBarTheme(theme.global.name.value === 'dark')
 }
 
 watch(prefersDark, (v) => {
-  if (settings.get('theme') === 'system') {
-    theme.change(v ? 'dark' : 'light')
-    void applySystemBarTheme(theme.global.name.value === 'dark')
-  }
+  if (settings.get('theme') === 'system') theme.change(v ? 'dark' : 'light')
 })
 
 watch(

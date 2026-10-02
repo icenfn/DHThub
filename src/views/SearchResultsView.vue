@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '../lib/tauri'
 import { useSitesStore } from '../stores/sites'
+import { settings } from '../stores/settings'
 import type { MagnetItem, SiteOutcome } from '../types'
 import MagnetDetailDialog from '../components/MagnetDetailDialog.vue'
 import StatisticsDialog from '../components/StatisticsDialog.vue'
@@ -20,8 +21,7 @@ const outcomes = ref<SiteOutcome[]>([])
 const searchedKeyword = ref('')
 const errorMsg = ref('')
 
-// 排序/过滤
-const filterText = ref('')
+// 排序（过滤标题功能已删除）
 const sortBy = ref('default')
 
 // 统计
@@ -33,12 +33,6 @@ const totalItems = computed(() => outcomes.value.reduce((a, o) => a + o.items.le
 
 const filteredOutcomes = computed(() => {
   let list = outcomes.value.map((o) => ({ ...o, items: o.items }))
-  const ft = filterText.value.trim().toLowerCase()
-  if (ft) {
-    list = list
-      .map((o) => ({ ...o, items: o.items.filter((i) => i.title.toLowerCase().includes(ft)) }))
-      .filter((o) => o.items.length > 0 || !o.success)
-  }
   if (sortBy.value !== 'default') {
     list = list.map((o) => ({
       ...o,
@@ -83,6 +77,7 @@ async function doSearch(kw = keyword.value, p = 1) {
       keyword: k,
       siteIds: ids,
       page: p,
+      dns: settings.get('dnsServer'),
     }, 60000)
     if (outcomes.value.length === 0) errorMsg.value = '没有启用的搜索源，请先到「搜索源」页订阅或启用'
   } catch (e) {
@@ -192,16 +187,8 @@ onMounted(async () => {
             </v-btn>
           </div>
 
-          <!-- 过滤/排序 -->
+          <!-- 排序 -->
           <div class="d-flex flex-column flex-sm-row ga-2 mt-1">
-            <v-text-field
-              v-model="filterText"
-              label="在当前结果中过滤标题"
-              density="compact"
-              hide-details
-              clearable
-              style="max-width: 320px"
-            />
             <v-select
               v-model="sortBy"
               :items="[

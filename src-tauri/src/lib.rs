@@ -1,12 +1,10 @@
 //! DHThub Tauri 应用入口：插件注册、状态管理、命令路由
 
+mod dns;
 mod history;
 mod models;
 mod search;
 mod sites;
-
-#[cfg(target_os = "android")]
-mod sysbar;
 
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
 use models::{SiteConfig, SiteOutcome};
@@ -127,6 +125,7 @@ async fn search_sites(
     keyword: String,
     site_ids: Option<Vec<String>>,
     page: u32,
+    dns: String,
 ) -> Result<Vec<SiteOutcome>, String> {
     if keyword.trim().is_empty() {
         return Err("搜索关键词不能为空".into());
@@ -143,7 +142,11 @@ async fn search_sites(
         return Err("没有启用的搜索源，请先在「搜索源」页启用或订阅".into());
     }
     let page = page.max(1);
-    Ok(search::search_multi(&state.http, sites, &keyword, page).await)
+    let client = match dns.trim() {
+        d if d.is_empty() => state.http.clone(),
+        d => dns::build_client(d)?,
+    };
+    Ok(search::search_multi(&client, sites, &keyword, page).await)
 }
 
 // ---------- 历史 ----------
@@ -220,25 +223,8 @@ pub fn run() {
             add_history,
             get_history,
             clear_history,
-            clear_all_history,
-            set_system_bar_theme
+            clear_all_history
         ])
         .run(tauri::generate_context!())
         .expect("DHThub 启动失败");
-}
-
-// ---------- 系统栏主题（Android 专用；桌面端 no-op） ----------
-
-/// 设置 Android 状态栏 / 导航栏颜色与图标明暗，跟随应用主题
-#[tauri::command]
-fn set_system_bar_theme(dark: bool) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    {
-        sysbar::apply(dark)
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = dark;
-        Ok(())
-    }
 }
