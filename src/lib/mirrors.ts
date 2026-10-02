@@ -1,13 +1,12 @@
-// GitHub 镜像工具：URL 转换、测速
-// 镜像采用「前缀代理」模式：base + 原始 GitHub URL，直连时 base 为空字符串
+// GitHub 镜像工具：URL 转换、测速（测速为纯前端实现，参考 moretools 方案：
+// no-cors fetch + AbortController 超时，DNS/连接/响应头任一步超时都会立即返回）
 
-import { invoke, isTauri } from './tauri'
+import { debugLog } from './debug'
 import type { GithubMirror, MirrorSpeedResult } from '../types'
 
-/** 内置 GitHub 镜像（3 个，不可删除） */
+/** 内置 GitHub 镜像（2 个，不可删除；镜像列表仅展示链接） */
 export const BUILTIN_MIRRORS: GithubMirror[] = [
   { id: 'direct', name: 'GitHub 官方（直连）', base: '', builtin: true },
-  { id: 'ghfast', name: 'ghfast.top', base: 'https://ghfast.top/', builtin: true },
   { id: 'ghproxy', name: 'gh-proxy.com', base: 'https://gh-proxy.com/', builtin: true },
 ]
 
@@ -19,6 +18,9 @@ export const MIRROR_PROBE_URL =
 export const HOTWORDS_URL =
   'https://raw.githubusercontent.com/icenfn/DHThub/main/hotwords.json'
 
+/** 单镜像测速超时（毫秒）：覆盖 DNS/建连/响应头全过程 */
+export const SPEED_TEST_TIMEOUT_MS = 6000
+
 /** 将原始 GitHub URL 套用镜像前缀；镜像为空或未选择时返回原 URL */
 export function mirrorUrl(mirror: GithubMirror | undefined | null, url: string): string {
   const base = (mirror?.base ?? '').trim()
@@ -26,34 +28,59 @@ export function mirrorUrl(mirror: GithubMirror | undefined | null, url: string):
   return `${base.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`
 }
 
-/** 浏览器预览模式下的兜底测速（raw.githubusercontent 支持 CORS） */
-async function measureInBrowser(url: string): Promise<number> {
+/** 由镜像前缀地址推导内部名称（取主机名），用户无需填写镜像名称 */
+export function deriveMirrorName(base: string): string {
+  try {
+    const host = new URL(base).host
+    return host || base
+  } catch {
+    return base
+  }
+}
+
+/**
+ * 前端测速单次请求：no-cors 模式（镜像站普遍不返回 CORS 头，但可达性/时延可测），
+ * fetch 在响应头到达时即 resolve，配合 AbortController 墙钟超时，任何情况都不挂起
+ */
+async function measureInFrontend(url: string, timeoutMs: number): Promise<number> {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 10_000)
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   const start = performance.now()
   try {
-    const resp = await fetch(url, { signal: ctrl.signal, cache: 'no-store' })
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    await fetch(url, {
+      method: 'GET',
+      signal: ctrl.signal,
+      cache: 'no-store',
+      mode: 'no-cors',
+      redirect: 'follow',
+    })
     return Math.round(performance.now() - start)
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error(`测速超时（>${timeoutMs}ms）`)
+    }
+    throw e
   } finally {
     clearTimeout(timer)
   }
 }
 
-/** 单个镜像测速：返回耗时（毫秒）或错误 */
+/** 单个镜像测速：返回耗时（毫秒）或错误（带超时兜底，永不挂起） */
 export async function speedTestMirror(mirror: GithubMirror): Promise<MirrorSpeedResult> {
   const url = mirrorUrl(mirror, MIRROR_PROBE_URL)
+  const label = mirror.base || '直连'
   try {
-    const latency = isTauri
-      ? await invoke<number>('test_mirror_speed', { url })
-      : await measureInBrowser(url)
+    const latency = await measureInFrontend(url, SPEED_TEST_TIMEOUT_MS)
+    debugLog(`[测速] ${label} → ${url}：${latency}ms`)
     return { id: mirror.id, name: mirror.name, base: mirror.base, latency, error: null }
   } catch (e) {
-    return { id: mirror.id, name: mirror.name, base: mirror.base, latency: null, error: String(e) }
+    const msg = e instanceof Error ? e.message : String(e)
+    debugLog(`[测速] ${label} 失败：${msg}`)
+    return { id: mirror.id, name: mirror.name, base: mirror.base, latency: null, error: msg }
   }
 }
 
-/** 并发测速全部镜像 */
+/** 并发测速全部镜像（单项独立超时，互不阻塞） */
 export async function speedTestAll(mirrors: GithubMirror[]): Promise<MirrorSpeedResult[]> {
   return Promise.all(mirrors.map(speedTestMirror))
 }

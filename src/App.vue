@@ -5,6 +5,7 @@ import { useDisplay, useTheme } from 'vuetify'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
 import { speedTestAll, pickFastest } from './lib/mirrors'
+import { debugLog } from './lib/debug'
 import UpdateDialog from './components/UpdateDialog.vue'
 
 const theme = useTheme()
@@ -46,7 +47,11 @@ async function autoSelectMirror() {
   try {
     const results = await speedTestAll(settings.getMirrors())
     const best = pickFastest(results)
-    if (best) await settings.selectMirror(best.id)
+    debugLog('[镜像] 自动测速结果：', results)
+    if (best) {
+      debugLog(`[镜像] 已自动选择：${best.base || '直连'}（${best.latency}ms）`)
+      await settings.selectMirror(best.id)
+    }
   } catch {
     /* 静默失败 */
   }
@@ -62,6 +67,9 @@ async function init() {
   // 首启协议
   if (!settings.get('agreedVersion') && isTauri) {
     showAgreement.value = true
+  } else if (isTauri && settings.get('autoCheckUpdate')) {
+    // 已同意过协议且开启自动更新：启动即静默检测
+    void silentCheckUpdate()
   }
   // 自动模式启动即测速选最快镜像（后台执行）
   void autoSelectMirror()
@@ -91,20 +99,22 @@ onBeforeUnmount(() => {
 async function acceptAgreement() {
   await settings.set('agreedVersion', '1')
   showAgreement.value = false
-  silentCheckUpdate()
+  if (settings.get('autoCheckUpdate')) silentCheckUpdate()
 }
 
 // 启动静默更新检测：发现新版本才弹窗（使用当前选中镜像）
 async function silentCheckUpdate() {
-  if (!isTauri) return
+  if (!isTauri || !settings.get('autoCheckUpdate')) return
   try {
     const { invoke } = await import('./lib/tauri')
     const mirror = settings.getSelectedMirror()
     const info = await invoke<{ has_update: boolean }>('check_update', {
       mirrorBase: mirror.base,
     })
+    debugLog('[更新] 检测结果：', info)
     if (info.has_update) updateOpen.value = true
-  } catch {
+  } catch (e) {
+    debugLog('[更新] 检测失败：', e)
     /* 静默失败不打扰用户 */
   }
 }
@@ -159,7 +169,7 @@ function go(to: string) {
         />
       </v-list>
       <template #append>
-        <div class="pa-4 text-caption text-medium-emphasis">v0.2.1 · GitHub 发布</div>
+        <div class="pa-4 text-caption text-medium-emphasis">v0.2.5 · GitHub 发布</div>
       </template>
     </v-navigation-drawer>
 

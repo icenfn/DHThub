@@ -6,7 +6,7 @@
 - 前端：Vue 3.5 + Vuetify 4.2（Material Design 3）+ Pinia + Vue Router + Vite 8
 - 桌面/移动壳：Tauri 2.12（Rust 核心：reqwest 并发抓取 + scraper 解析 + 本地 JSON 持久化）
 - 更新检测：GitHub Releases API + 桌面端 tauri-plugin-updater + Android APK 下载安装
-- CI/CD：`.github/workflows/release.yml` 一键产出 Linux(deb/appimage/rpm)、Windows(nsis/msi)、Android(APK×4 ABI)
+- CI/CD：`.github/workflows/release.yml` 一键产出 Linux(deb/rpm)、Windows(nsis)、Android(APK×2 ABI: arm64/armv7)
 
 > 说明：站点订阅源全部存放在本仓库 `sites/` 目录（或任意 GitHub Raw JSON 地址），应用内可随时「拉取订阅」更新；不内置任何私有站点列表。
 
@@ -14,7 +14,9 @@
 
 ## 功能清单（已实现）
 
-> **v0.2.0**：UI 全面升级至 Vuetify 4 + Material Design 3（完整 MD3 色彩 token、顶栏布局）；新增独立设置页的 **GitHub 镜像** 配置（内置 3 个、可自定义、一键测速、手动/自动选最快），用于检查更新与订阅源拉取；新增**设置导出/导入**（JSON 备份恢复）。
+> **v0.2.5**：设置页独立路由（Vue Router 跳转）；新增**自动检测更新**开关与**调试模式**；镜像测速重构为**纯前端实现**（no-cors + 超时兜底，不再转圈无结果）；移除 ghfast.top 内置镜像，镜像列表仅显示链接、直连带「直连」标签、添加镜像无需填写名称；历史记录仅保留**浏览记录**；打包目标调整（不再产出 AppImage / MSI，APK 仅 arm64 + armv7）。
+
+> **v0.2.0**：UI 全面升级至 Vuetify 4 + Material Design 3（完整 MD3 色彩 token、顶栏布局）；新增独立设置页的 **GitHub 镜像** 配置（内置 2 个、可自定义、一键测速、手动/自动选最快），用于检查更新与订阅源拉取；新增**设置导出/导入**（JSON 备份恢复）。
 
 ### A 核心
 | 编号 | 功能 | 说明 |
@@ -24,9 +26,9 @@
 | A3 | 结果展示 | 按站点分组卡片、失败站点提示、空态/加载态 |
 | A4 | 磁力操作 | 复制、打开（系统处理）、分享、详情弹窗 |
 | A5 | 搜索历史+热词 | 本地 20 条历史、热词「换一换」、清空 |
-| A6 | 三类历史页 | 磁力/复制/浏览记录，去重、上限 500、清空 |
-| A7 | GitHub 更新检测 | Release 检查（支持镜像）、桌面自动更新、Android APK 下载安装（支持镜像）、启动静默检查 |
-| A8 | 设置页 | MD3 界面：主题、GitHub 镜像（内置 3 个/自定义/测速/手动或自动选最快）、设置导出导入（JSON）、热词管理、数据清除、订阅源、关于 |
+| A6 | 浏览历史页 | 仅记录浏览（详情查看）记录，去重、上限 500、清空 |
+| A7 | GitHub 更新检测 | Release 检查（支持镜像）、桌面自动更新、Android APK 下载安装（支持镜像）、启动自动检测（可开关） |
+| A8 | 设置页 | MD3 界面：主题、GitHub 镜像（内置 2 个/自定义/测速/手动或自动选最快）、自动更新开关、调试模式、设置导出导入（JSON）、热词管理、数据清除、订阅源、关于 |
 | A9 | Actions 三端发布 | tag v* 触发，Linux/Windows/Android 自动打包 + Release |
 
 ### B 已选
@@ -80,8 +82,8 @@ npm run tauri build
 ## Android 构建
 
 ```bash
-# 环境：JDK 17 + Android SDK + NDK r26d + Rust android 目标
-rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+# 环境：JDK 17 + Android SDK + NDK r26d + Rust android 目标（仅 arm64 / armv7，不编译 x86）
+rustup target add aarch64-linux-android armv7-linux-androideabi
 npx tauri android init
 cargo tauri android build --apk --split-per-abi
 ```
@@ -93,10 +95,10 @@ cargo tauri android build --apk --split-per-abi
 
 1. 推送 tag 触发发布：
    ```bash
-   git tag v0.2.0 && git push origin v0.2.0
+   git tag v0.2.5 && git push origin v0.2.5
    ```
 2. 或在 Actions 页手动触发 `workflow_dispatch`。
-3. 产物自动上传 GitHub Release：deb / AppImage / rpm / nsis / msi / APK（arm64/v7a/x86/x86_64）。
+3. 产物自动上传 GitHub Release：deb / rpm / nsis / APK（arm64 / armv7）。
 
 ### 可选配置（建议设置）
 

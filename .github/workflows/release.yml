@@ -15,7 +15,7 @@ env:
 
 jobs:
   release-linux:
-    name: build linux (deb / appimage / rpm)
+    name: build linux (deb / rpm)
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -52,10 +52,10 @@ jobs:
           releaseDraft: false
           force: true
           prerelease: false
-          args: --bundles deb,appimage,rpm
+          args: --bundles deb,rpm
 
   release-windows:
-    name: build windows (nsis / msi)
+    name: build windows (nsis)
     runs-on: windows-latest
     permissions:
       contents: write
@@ -85,10 +85,10 @@ jobs:
           releaseDraft: false
           force: true
           prerelease: false
-          args: --bundles nsis,msi
+          args: --bundles nsis
 
   release-android:
-    name: build android (apk, 4 abi)
+    name: build android (apk, arm64 + armv7)
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -101,7 +101,7 @@ jobs:
       - name: Rust toolchain + Android 交叉编译目标
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi
 
       - name: Node 22
         uses: actions/setup-node@v4
@@ -138,6 +138,21 @@ jobs:
 
       - name: 初始化 Android 工程
         run: npx tauri android init
+
+      - name: 仅保留 arm64 / armv7 ABI（apk 不编译 x86 / x86_64）
+        run: |
+          python3 - <<'PYEOF'
+          import re
+          p = 'src-tauri/gen/android/app/build.gradle.kts'
+          s = open(p, encoding='utf-8').read()
+          # 将 abiFilters 固定为 arm64-v8a + armeabi-v7a（模板若含 x86/x86_64 一并移除）
+          pattern = re.compile(r'abiFilters\s*(\+?=)\s*listOf\([^)]*\)')
+          if pattern.search(s):
+              s = pattern.sub('abiFilters += listOf("arm64-v8a", "armeabi-v7a")', s)
+          open(p, 'w', encoding='utf-8').write(s)
+          m = re.search(r'abiFilters[^\n]*', s)
+          print('abiFilters now:', m.group(0) if m else '（未显式声明，默认仅编译已安装的 Rust 目标）')
+          PYEOF
 
       - name: 覆盖 Android 图标为自定义图标（tauri init 使用模板默认图标，需用 icons/android 覆盖）
         run: |
@@ -246,7 +261,7 @@ jobs:
           print('gradle signing wired OK')
           PYEOF
 
-      - name: 构建 APK（split-per-abi，四架构）
+      - name: 构建 APK（split-per-abi，双架构）
         run: npx tauri android build --apk --split-per-abi
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}

@@ -6,11 +6,14 @@ import { settings } from '../stores/settings'
 import { useSitesStore } from '../stores/sites'
 import { invoke, isTauri } from '../lib/tauri'
 import { speedTestMirror, pickFastest, MIRROR_PROBE_URL } from '../lib/mirrors'
+import { debugLog } from '../lib/debug'
 import UpdateDialog from '../components/UpdateDialog.vue'
 import type { GithubMirror, MirrorSpeedResult } from '../types'
 
 const sitesStore = useSitesStore()
 const themeMode = ref<'system' | 'light' | 'dark'>('system')
+const autoCheck = ref(true)
+const debugOn = ref(false)
 const toast = ref('')
 const showToast = ref(false)
 const updateOpen = ref(false)
@@ -25,12 +28,17 @@ const speeds = ref<Record<string, MirrorSpeedResult>>({})
 const testing = ref(false)
 const testingIds = ref<Set<string>>(new Set())
 const addMirrorDialog = ref(false)
-const newMirrorName = ref('')
 const newMirrorBase = ref('')
+
+/** 镜像在列表中的展示文本：只显示链接；直连显示官方地址 */
+function mirrorLabel(m: GithubMirror): string {
+  return m.base || 'https://github.com'
+}
 
 interface MirrorRow extends GithubMirror {
   speedChip: { color: string; icon: string; text: string } | null
   testing: boolean
+  error: string | null
 }
 
 const mirrorRows = computed<MirrorRow[]>(() =>
@@ -46,7 +54,7 @@ const mirrorRows = computed<MirrorRow[]>(() =>
             text: `${r.latency}ms`,
           }
     }
-    return { ...m, speedChip: chip, testing: testingIds.value.has(m.id) }
+    return { ...m, speedChip: chip, testing: testingIds.value.has(m.id), error: r?.error ?? null }
   }),
 )
 
@@ -66,6 +74,19 @@ function notice(msg: string) {
 async function saveTheme(v: 'system' | 'light' | 'dark') {
   themeMode.value = v
   await settings.set('theme', v)
+}
+
+// ---------- 更新 / 调试 ----------
+async function saveAutoCheck(v: boolean) {
+  autoCheck.value = v
+  await settings.set('autoCheckUpdate', v)
+  notice(v ? '已开启自动检测更新（启动时静默检查）' : '已关闭自动检测更新')
+}
+
+async function saveDebug(v: boolean) {
+  debugOn.value = v
+  await settings.set('debug', v)
+  notice(v ? '已开启调试模式' : '已关闭调试模式')
 }
 
 // ---------- 数据 ----------
@@ -106,10 +127,10 @@ async function selectMirror(m: GithubMirror) {
   if (mirrorMode.value !== 'manual') return
   selectedMirrorId.value = m.id
   await settings.selectMirror(m.id)
-  notice(`已切换：${m.name}`)
+  notice(`已切换：${mirrorLabel(m)}`)
 }
 
-/** 并发测速全部镜像，单项完成立即刷新延迟显示 */
+/** 并发测速全部镜像，单项完成立即刷新延迟显示（单项独立超时，永不挂起） */
 async function runSpeedTest(autoPick = false) {
   if (testing.value) return
   testing.value = true
@@ -130,12 +151,14 @@ async function runSpeedTest(autoPick = false) {
     const list = mirrors.value
       .map((m) => speeds.value[m.id])
       .filter((r): r is MirrorSpeedResult => !!r)
+    debugLog('[测速] 全部完成：', list)
     if (autoPick || mirrorMode.value === 'auto') {
       const best = pickFastest(list)
       if (best) {
         selectedMirrorId.value = best.id
         await settings.selectMirror(best.id)
-        notice(`已自动选择最快镜像：${best.name}（${best.latency}ms）`)
+        const bm = mirrors.value.find((m) => m.id === best.id)
+        notice(`已自动选择最快镜像：${mirrorLabel(bm ?? best)}（${best.latency}ms）`)
       } else {
         notice('测速完成，但所有镜像均不可用')
       }
@@ -150,19 +173,17 @@ async function runSpeedTest(autoPick = false) {
 }
 
 function openAddMirror() {
-  newMirrorName.value = ''
   newMirrorBase.value = ''
   addMirrorDialog.value = true
 }
 
 async function addMirror() {
   try {
-    const m = await settings.addMirror(newMirrorName.value, newMirrorBase.value)
-    newMirrorName.value = ''
+    const m = await settings.addMirror(newMirrorBase.value)
     newMirrorBase.value = ''
     addMirrorDialog.value = false
     await refreshMirrors()
-    notice(`已添加镜像：${m.name}`)
+    notice(`已添加镜像：${mirrorLabel(m)}`)
   } catch (e) {
     notice(String(e))
   }
@@ -214,6 +235,8 @@ async function doImportSettings() {
     const count = await settings.importJson(text)
     // 重新同步页面状态
     themeMode.value = settings.get('theme')
+    autoCheck.value = settings.get('autoCheckUpdate')
+    debugOn.value = settings.get('debug')
     await refreshMirrors()
     notice(`设置导入成功（${count} 项）`)
   } catch (e) {
@@ -226,6 +249,8 @@ async function doImportSettings() {
 onMounted(async () => {
   await settings.ready()
   themeMode.value = settings.get('theme')
+  autoCheck.value = settings.get('autoCheckUpdate')
+  debugOn.value = settings.get('debug')
   await refreshMirrors()
   await sitesStore.load().catch(() => undefined)
 })
@@ -279,6 +304,22 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
       </v-card-text>
     </v-card>
 
+    <!-- 更新 -->
+    <v-card class="mb-4">
+      <v-card-item>
+        <template #prepend>
+          <v-avatar color="info-container" variant="flat" rounded="lg">
+            <v-icon icon="mdi-update" color="on-info-container" />
+          </v-avatar>
+        </template>
+        <v-card-title class="text-subtitle-1 font-weight-bold">更新</v-card-title>
+        <v-card-subtitle class="text-caption">启动时静默检查 GitHub Release，发现新版本自动弹窗提醒</v-card-subtitle>
+        <template #append>
+          <v-switch :model-value="autoCheck" color="primary" hide-details @update:model-value="saveAutoCheck(!!$event)" />
+        </template>
+      </v-card-item>
+    </v-card>
+
     <!-- GitHub 镜像 -->
     <v-card class="mb-4">
       <v-card-item>
@@ -289,7 +330,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </template>
         <v-card-title class="text-subtitle-1 font-weight-bold">GitHub 镜像</v-card-title>
         <v-card-subtitle class="text-caption">
-          用于检查更新、拉取订阅源等 GitHub 请求；内置 3 个，可自定义添加
+          用于检查更新、拉取订阅源等 GitHub 请求；内置 2 个，可自定义添加
         </v-card-subtitle>
         <template #append>
           <v-btn
@@ -327,13 +368,13 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           </v-chip>
           <v-spacer />
           <span v-if="selectedMirror" class="text-caption text-medium-emphasis">
-            当前：<strong class="text-primary">{{ selectedMirror.name }}</strong>
+            当前：<strong class="text-primary">{{ mirrorLabel(selectedMirror) }}</strong>
             <span v-if="currentLatency != null" class="ml-1">· {{ currentLatency }}ms</span>
           </span>
         </div>
       </v-card-text>
 
-      <!-- 镜像列表 -->
+      <!-- 镜像列表：仅展示链接；直连行保留「直连」标签，其余不加标签 -->
       <v-list density="compact" class="px-2 pb-2">
         <v-list-item
           v-for="row in mirrorRows"
@@ -351,15 +392,12 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
               size="20"
             />
           </template>
-          <v-list-item-title class="text-body-2 font-weight-medium">
-            {{ row.name }}
-            <v-chip v-if="row.builtin" size="x-small" color="primary" variant="tonal" class="ml-1">
-              内置
+          <v-list-item-title class="text-body-2 font-weight-medium font-family-monospace">
+            {{ mirrorLabel(row) }}
+            <v-chip v-if="row.id === 'direct'" size="x-small" color="primary" variant="tonal" class="ml-1">
+              直连
             </v-chip>
           </v-list-item-title>
-          <v-list-item-subtitle class="text-caption font-family-monospace">
-            {{ row.base || '（官方直连，不加前缀）' }}
-          </v-list-item-subtitle>
           <template #append>
             <div class="d-flex align-center ga-2">
               <v-progress-circular
@@ -390,6 +428,9 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
               />
             </div>
           </template>
+          <v-list-item-subtitle v-if="debugOn && row.error" class="text-caption text-error font-family-monospace">
+            {{ row.error }}
+          </v-list-item-subtitle>
         </v-list-item>
       </v-list>
 
@@ -399,6 +440,22 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         </v-btn>
         <div class="text-caption text-medium-emphasis mt-1">测速探针：{{ MIRROR_PROBE_URL }}</div>
       </v-card-text>
+    </v-card>
+
+    <!-- 高级 -->
+    <v-card class="mb-4">
+      <v-card-item>
+        <template #prepend>
+          <v-avatar color="warning-container" variant="flat" rounded="lg">
+            <v-icon icon="mdi-bug-outline" color="on-warning-container" />
+          </v-avatar>
+        </template>
+        <v-card-title class="text-subtitle-1 font-weight-bold">高级</v-card-title>
+        <v-card-subtitle class="text-caption">调试模式：输出详细运行日志，并在测速列表显示失败原因</v-card-subtitle>
+        <template #append>
+          <v-switch :model-value="debugOn" color="primary" hide-details @update:model-value="saveDebug(!!$event)" />
+        </template>
+      </v-card-item>
     </v-card>
 
     <!-- 数据管理 -->
@@ -426,7 +483,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
         <div class="text-subtitle-2 font-weight-bold mb-1">数据清理</div>
         <div class="d-flex flex-wrap ga-2">
           <v-btn variant="tonal" color="error" prepend-icon="mdi-delete-sweep-outline" :loading="clearing" @click="clearHistory">
-            清空全部历史（磁力/复制/浏览）
+            清空全部历史记录
           </v-btn>
           <v-btn variant="tonal" color="error" prepend-icon="mdi-history" @click="clearSearchHistory">
             清空搜索历史
@@ -473,16 +530,15 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
       </v-list>
     </v-card>
 
-    <!-- 添加自定义镜像弹窗 -->
+    <!-- 添加自定义镜像弹窗（仅需填写链接，名称自动生成） -->
     <v-dialog v-model="addMirrorDialog" max-width="480">
       <v-card>
         <v-card-title class="text-subtitle-1 font-weight-bold">添加自定义 GitHub 镜像</v-card-title>
         <v-divider />
         <v-card-text>
-          <v-text-field v-model="newMirrorName" label="镜像名称 *" hide-details class="mb-3" placeholder="例如：ghproxy.net" />
           <v-text-field
             v-model="newMirrorBase"
-            label="前缀地址 *（https:// 开头）"
+            label="镜像前缀地址 *（https:// 开头）"
             hide-details
             placeholder="https://ghproxy.net/"
           />
@@ -497,7 +553,7 @@ const subscribeUrl = computed(() => settings.get('subscribeUrl'))
           <v-btn
             color="primary"
             variant="flat"
-            :disabled="!newMirrorName.trim() || !newMirrorBase.trim()"
+            :disabled="!newMirrorBase.trim()"
             @click="addMirror"
           >
             保存

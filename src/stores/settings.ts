@@ -2,7 +2,8 @@
 
 import { reactive } from 'vue'
 import { isTauri } from '../lib/tauri'
-import { BUILTIN_MIRRORS } from '../lib/mirrors'
+import { BUILTIN_MIRRORS, deriveMirrorName } from '../lib/mirrors'
+import { setDebug } from '../lib/debug'
 import type { GithubMirror, SettingsExportFile } from '../types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -21,6 +22,10 @@ export interface SettingsData {
   githubMirrorMode: MirrorMode
   /** 当前选中镜像 id */
   githubMirrorId: string
+  /** 自动检测更新：启动时静默检查新版本，发现后弹窗提醒 */
+  autoCheckUpdate: boolean
+  /** 调试模式：开启后输出详细日志与测速错误信息 */
+  debug: boolean
 }
 
 export const DEFAULT_SUBSCRIBE_URL =
@@ -51,6 +56,8 @@ const DEFAULTS: SettingsData = {
   githubMirrors: BUILTIN_MIRRORS.map((m) => ({ ...m })),
   githubMirrorMode: 'manual',
   githubMirrorId: 'direct',
+  autoCheckUpdate: true,
+  debug: false,
 }
 
 class SettingsStore {
@@ -74,6 +81,7 @@ class SettingsStore {
           /* ignore */
         }
       }
+      setDebug(this.data.debug)
       this.loaded = true
     }
   }
@@ -87,6 +95,7 @@ class SettingsStore {
     } catch {
       /* ignore */
     }
+    setDebug(this.data.debug)
     this.loaded = true
   }
 
@@ -142,6 +151,8 @@ class SettingsStore {
     if (!merged.githubMirrors.some((m) => m.id === merged.githubMirrorId)) {
       merged.githubMirrorId = merged.githubMirrors[0]?.id ?? 'direct'
     }
+    if (typeof merged.autoCheckUpdate !== 'boolean') merged.autoCheckUpdate = true
+    if (typeof merged.debug !== 'boolean') merged.debug = false
     return merged
   }
 
@@ -172,6 +183,7 @@ class SettingsStore {
 
   async set<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
     this.data[key] = value
+    if (key === 'debug') setDebug(value as boolean)
     await this.persist()
   }
 
@@ -215,20 +227,19 @@ class SettingsStore {
     await this.persist()
   }
 
-  /** 添加自定义镜像（返回新镜像，name/base 已校验） */
-  async addMirror(name: string, base: string): Promise<GithubMirror> {
-    const n = name.trim()
-    if (!n) throw new Error('镜像名称不能为空')
-    if (!/^https?:\/\/[^\s]+$/i.test(base.trim())) {
+  /** 添加自定义镜像（base 已校验；名称由地址自动推导，无需用户填写） */
+  async addMirror(base: string): Promise<GithubMirror> {
+    const v = base.trim()
+    if (!/^https?:\/\/[^\s]+$/i.test(v)) {
       throw new Error('镜像地址必须以 http(s):// 开头')
     }
-    const normalized = base.trim().endsWith('/') ? base.trim() : `${base.trim()}/`
+    const normalized = v.endsWith('/') ? v : `${v}/`
     if (this.data.githubMirrors.some((m) => m.base === normalized)) {
       throw new Error('该镜像地址已存在')
     }
     const mirror: GithubMirror = {
       id: `m${Date.now().toString(36)}`,
-      name: n,
+      name: deriveMirrorName(normalized),
       base: normalized,
     }
     this.data.githubMirrors = [...this.data.githubMirrors, mirror]
@@ -275,7 +286,7 @@ class SettingsStore {
     const merged = this.merge({ ...this.data, ...incoming } as Partial<SettingsData>)
     // 统计实际导入的字段数
     let imported = 0
-    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorMode', 'githubMirrorId'] as const).forEach(
+    ;(['theme', 'subscribeUrl', 'hotWords', 'searchHistory', 'githubMirrorMode', 'githubMirrorId', 'autoCheckUpdate', 'debug'] as const).forEach(
       (k) => {
         if (incoming[k] !== undefined) imported++
       },

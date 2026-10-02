@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { invoke, isTauri } from '../lib/tauri'
+import { isTauri } from '../lib/tauri'
 import type { MagnetItem } from '../types'
 
 const props = defineProps<{
@@ -28,7 +28,6 @@ async function copy() {
     await writeText(props.item.magnet || props.item.url)
     toast.value = '磁力链接已复制到剪贴板'
     showToast.value = true
-    void invoke('add_history', { kind: 'copy', keyword: props.keyword, magnet: props.item.magnet })
   } catch (e) {
     // 浏览器降级
     try {
@@ -53,7 +52,6 @@ async function openMagnet() {
     } else {
       window.open(target, '_blank')
     }
-    void invoke('add_history', { kind: 'magnet', keyword: props.keyword, magnet: props.item.magnet })
   } catch (e) {
     toast.value = `无法打开：${e}`
     showToast.value = true

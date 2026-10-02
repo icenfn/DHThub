@@ -117,12 +117,6 @@ async fn fetch_text(state: tauri::State<'_, AppState>, url: String) -> Result<St
     search::fetch_text(&state.http, &url).await
 }
 
-/// GitHub 镜像测速：请求目标 URL，返回耗时（毫秒）
-#[tauri::command]
-async fn test_mirror_speed(state: tauri::State<'_, AppState>, url: String) -> Result<u64, String> {
-    search::measure_latency(&state.http, &url).await
-}
-
 // ---------- 搜索 ----------
 
 #[tauri::command]
@@ -245,7 +239,6 @@ pub fn run() {
             import_sites,
             reset_sites,
             fetch_text,
-            test_mirror_speed,
             search_sites,
             add_history,
             get_history,

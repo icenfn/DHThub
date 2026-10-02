@@ -1,16 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { invoke } from '../lib/tauri'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
-import type { HistoryEntry, HistoryKind } from '../types'
+import type { HistoryEntry } from '../types'
 
-const tabs: { key: HistoryKind; label: string; icon: string }[] = [
-  { key: 'magnet', label: '磁力记录', icon: 'mdi-magnet' },
-  { key: 'copy', label: '复制记录', icon: 'mdi-content-copy' },
-  { key: 'browse', label: '浏览记录', icon: 'mdi-eye-outline' },
-]
+const KIND = 'browse'
 
-const activeTab = ref<HistoryKind>('magnet')
 const list = ref<HistoryEntry[]>([])
 const loading = ref(false)
 const toast = ref('')
@@ -35,7 +30,7 @@ function shortMagnet(m: string): string {
 async function load() {
   loading.value = true
   try {
-    list.value = await invoke<HistoryEntry[]>('get_history', { kind: activeTab.value })
+    list.value = await invoke<HistoryEntry[]>('get_history', { kind: KIND })
   } catch {
     list.value = []
   } finally {
@@ -53,20 +48,13 @@ async function copyMagnet(entry: HistoryEntry) {
   }
 }
 
-async function remove(entry: HistoryEntry) {
-  // Rust 端无单条删除接口，此处提供复制+从列表隐藏由全清处理；保持简单
-  toast.value = '已打开磁力链接'
-  showToast.value = true
-}
-
 async function clearAll() {
-  await invoke('clear_history', { kind: activeTab.value })
+  await invoke('clear_history', { kind: KIND })
   await load()
   toast.value = '已清空'
   showToast.value = true
 }
 
-watch(activeTab, load)
 onMounted(load)
 </script>
 
@@ -75,33 +63,27 @@ onMounted(load)
     <div class="d-flex align-center mt-2 mb-4">
       <div>
         <div class="text-h6 font-weight-bold">历史记录</div>
-        <div class="text-caption text-medium-emphasis">磁力 / 复制 / 浏览三类历史，本地存储</div>
+        <div class="text-caption text-medium-emphasis">浏览记录，本地存储</div>
       </div>
       <v-spacer />
       <v-btn variant="tonal" color="error" prepend-icon="mdi-delete-sweep-outline" size="small" @click="clearAll">
-        清空当前
+        清空浏览记录
       </v-btn>
     </div>
 
     <v-card rounded="lg">
-      <v-tabs v-model="activeTab" color="primary" grow>
-        <v-tab v-for="t in tabs" :key="t.key" :value="t.key">
-          <v-icon :icon="t.icon" class="mr-1" size="18" />{{ t.label }}
-        </v-tab>
-      </v-tabs>
-      <v-divider />
       <v-progress-linear v-if="loading" indeterminate color="primary" />
       <v-empty-state
         v-if="!loading && list.length === 0"
         icon="mdi-history"
-        :title="`暂无${tabs.find((t) => t.key === activeTab)?.label}`"
-        text="使用搜索功能后，相关操作会自动记录在这里"
+        title="暂无浏览记录"
+        text="点击搜索结果查看详情后，会自动记录在这里"
       />
       <v-list v-else lines="two">
         <v-list-item v-for="(entry, i) in list" :key="i">
           <template #prepend>
             <v-avatar color="primary" variant="tonal" size="36">
-              <v-icon :icon="tabs.find((t) => t.key === activeTab)?.icon" size="18" />
+              <v-icon icon="mdi-eye-outline" size="18" />
             </v-avatar>
           </template>
           <v-list-item-title class="text-body-2 font-weight-bold">{{ entry.keyword || '—' }}</v-list-item-title>
