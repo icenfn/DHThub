@@ -6,8 +6,8 @@ use jni::sys::{jint, jobject};
 use jni::JavaVM;
 
 /// 主题 surface 色：深色 #121212 / 浅色 #FFFFFF（与 Vuetify MD3 默认一致）
-const COLOR_DARK: jint = 0xFF121212;
-const COLOR_LIGHT: jint = 0xFFFFFFFF;
+const COLOR_DARK: jint = 0xFF121212_u32 as jint;
+const COLOR_LIGHT: jint = -1; // 0xFFFFFFFF
 /// SYSTEM_UI_FLAG_LIGHT_STATUS_BAR（0x2000）| SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR（0x10）
 const FLAG_LIGHT: jint = 0x2000 | 0x10;
 
@@ -28,8 +28,7 @@ pub fn apply(dark: bool) -> Result<(), String> {
 
         let window = env
             .call_method(&activity, "getWindow", "()Landroid/view/Window;", &[])?
-            .l()
-            .ok_or(jni::errors::Error::JavaException)?;
+            .l()?;
 
         // 状态栏 / 导航栏背景色 = 主题 surface 色
         let color: jint = if dark { COLOR_DARK } else { COLOR_LIGHT };
@@ -44,8 +43,7 @@ pub fn apply(dark: bool) -> Result<(), String> {
         // 图标明暗：浅色主题 → 深色图标
         let decor = env
             .call_method(&window, "getDecorView", "()Landroid/view/View;", &[])?
-            .l()
-            .ok_or(jni::errors::Error::JavaException)?;
+            .l()?;
         let flags: jint = if dark { 0 } else { FLAG_LIGHT };
         env.call_method(
             &decor,
