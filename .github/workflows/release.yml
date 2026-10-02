@@ -268,7 +268,8 @@ jobs:
           name: android-apks
           path: |
             src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/*/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/arm/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/arm64/release/*.apk
           if-no-files-found: error
 
   publish:
@@ -283,9 +284,19 @@ jobs:
           name: android-apks
           path: android-apks
 
-      - name: 发布/更新 Release（追加 Android APK）
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: android-apks/**/*.apk
-          draft: false
+      - name: 上传 APK 到 Release（arm64 + arm，x86 空壳不发布）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd android-apks
+          RELEASE_ID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/icenfn/DHThub/releases/tags/${{ github.ref_name }}" | \
+            python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          for apk in arm64/release/app-arm64-release.apk arm/release/app-arm-release.apk; do
+            curl -sL -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/vnd.android.package-archive" \
+              --data-binary "@$apk" \
+              "https://uploads.github.com/repos/icenfn/DHThub/releases/$RELEASE_ID/assets?name=$(basename "$apk")" | \
+              python3 -c 'import json,sys; d=json.load(sys.stdin); print("uploaded:", d.get("name"))'
+          done
