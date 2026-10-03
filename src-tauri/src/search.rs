@@ -153,12 +153,12 @@ fn build_form(site: &SiteConfig, url: &str) -> Vec<(String, String)> {
         // 从 URL 中还原占位符位置再填充表单字段（字段名可用 keyword_field 覆盖）
         if let Some(kw) = extract_placeholder(&site.request.search_url, url, "[keyword]") {
             let field = site.request.keyword_field.as_deref().unwrap_or("keyword");
-            form.push((field, kw));
+            form.push((field.to_string(), kw));
         }
     }
     if lower.contains("[page]") {
         if let Some(pg) = extract_placeholder(&site.request.search_url, url, "[page]") {
-            form.push(("page", pg));
+            form.push(("page".to_string(), pg));
         }
     }
     if form.is_empty() {
