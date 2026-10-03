@@ -1,7 +1,7 @@
 //! 多源磁力搜索：并发请求订阅源站点，按 CSS 选择器规则解析结果
 
 use crate::models::{ExpressionModel, FieldSpec, MagnetItem, SiteConfig, SiteOutcome};
-use futures::stream::StreamExt;
+use futures::FutureExt;
 use scraper::{ElementRef, Html, Selector};
 use std::sync::Arc;
 use std::time::Instant;
@@ -11,13 +11,18 @@ use tokio::sync::Semaphore;
 const MAX_CONCURRENCY: usize = 8;
 
 /// 并发执行多站点搜索：每站一个 tokio 任务 + 信号量限流，
-/// 任一站点失败/超时都不影响其他站点，结果按完成顺序返回
-pub async fn search_multi(
+/// 任一站点失败/超时都不影响其他站点；每完成一站立即回调 on_outcome（实时返回），
+/// 结果按完成顺序返回
+pub async fn search_multi<F>(
     client: &reqwest::Client,
     sites: Vec<SiteConfig>,
     keyword: &str,
     page: u32,
-) -> Vec<SiteOutcome> {
+    mut on_outcome: F,
+) -> Vec<SiteOutcome>
+where
+    F: FnMut(SiteOutcome),
+{
     if sites.is_empty() {
         return vec![];
     }
@@ -30,17 +35,42 @@ pub async fn search_multi(
         let semaphore = semaphore.clone();
         let keyword_enc = keyword_enc.clone();
         tasks.spawn(async move {
+            // 提前捕获站点信息，即使内部 panic 也能报出正确站点名
+            let header = (
+                site.id.clone().unwrap_or_default(),
+                site.name.clone(),
+                site.is_default,
+            );
             // 信号量关闭（不可能发生）时也继续执行，避免整批搜索卡死
             let _permit = semaphore.acquire().await.ok();
-            search_one(&client, &site, &keyword_enc, page).await
+            // 捕获 panic：单站异常只影响本站
+            let result =
+                std::panic::AssertUnwindSafe(search_one(&client, &site, &keyword_enc, page).await)
+                    .catch_unwind()
+                    .await;
+            match result {
+                Ok(o) => o,
+                Err(p) => SiteOutcome {
+                    site_id: header.0,
+                    site_name: header.1,
+                    success: false,
+                    elapsed_ms: 0,
+                    items: vec![],
+                    error: Some(format!("任务异常: {}", panic_message(&p))),
+                    is_default: header.2,
+                },
+            }
         });
     }
 
     let mut out = Vec::with_capacity(tasks.len());
     while let Some(res) = tasks.join_next().await {
         match res {
-            Ok(o) => out.push(o),
-            // 站点任务异常（如解析 panic）：单独失败，不影响整体
+            Ok(o) => {
+                on_outcome(o.clone());
+                out.push(o);
+            }
+            // 任务本身被 abort 等极端情况：兜底一条失败记录
             Err(e) => out.push(SiteOutcome {
                 site_id: String::new(),
                 site_name: "未知站点".into(),
@@ -53,6 +83,17 @@ pub async fn search_multi(
         }
     }
     out
+}
+
+/// 从 panic 载荷中提取可读信息
+fn panic_message(p: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = p.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = p.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "未知错误".into()
+    }
 }
 
 /// 单站点搜索（一次性请求，不重试；尽力而为）
@@ -94,7 +135,7 @@ async fn search_one(
 }
 
 /// 构造搜索地址：替换 [keyword] [page] 占位符
-fn build_url(site: &SiteConfig, keyword_enc: &str, page: u32) -> String {
+pub(crate) fn build_url(site: &SiteConfig, keyword_enc: &str, page: u32) -> String {
     site.request
         .search_url
         .replace("[keyword]", keyword_enc)
@@ -102,7 +143,7 @@ fn build_url(site: &SiteConfig, keyword_enc: &str, page: u32) -> String {
 }
 
 /// 发起请求并取回 HTML 文本
-async fn fetch_html(
+pub(crate) async fn fetch_html(
     client: &reqwest::Client,
     site: &SiteConfig,
     url: &str,
@@ -178,7 +219,7 @@ fn extract_placeholder(template: &str, final_url: &str, placeholder: &str) -> Op
 }
 
 /// 按选择器规则解析 HTML
-fn parse_html(html: &str, expr: &ExpressionModel) -> Vec<MagnetItem> {
+pub(crate) fn parse_html(html: &str, expr: &ExpressionModel) -> Vec<MagnetItem> {
     if expr.group.trim().is_empty() {
         return vec![];
     }

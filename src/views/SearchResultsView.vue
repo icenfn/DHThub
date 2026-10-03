@@ -2,6 +2,7 @@
 // 搜索结果独立页面：读取首页传入的关键词/搜索源参数，执行搜索并展示聚合结果
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '../lib/tauri'
 import { useSitesStore } from '../stores/sites'
 import { settings } from '../stores/settings'
@@ -14,10 +15,21 @@ const router = useRouter()
 const sitesStore = useSitesStore()
 
 const keyword = ref(String(route.query.k ?? ''))
-const engineId = ref<string | null>(String(route.query.e ?? '') || null) // null = 全部
+// 搜索源多选：'all' = 全部；选中全部时单选，其余可多选（必填，至少一个）
+const engineIds = ref<string[]>(['all'])
+const engineOptions = computed(() => [
+  { id: 'all', name: '全部' },
+  ...sitesStore.enabledSites.map((s) => ({ id: s.id ?? '', name: s.name })),
+])
+watch(engineIds, (v) => {
+  if (v.length === 0) engineIds.value = ['all']
+  else if (v.includes('all')) engineIds.value = [v[v.length - 1]]
+})
 const page = ref(1)
 const searching = ref(false)
 const outcomes = ref<SiteOutcome[]>([])
+// 搜索会话序号：丢弃过期搜索（快速连点时）的迟到事件
+let searchSeq = 0
 const searchedKeyword = ref('')
 const errorMsg = ref('')
 
@@ -70,27 +82,51 @@ async function doSearch(kw = keyword.value, p = 1) {
   searchedKeyword.value = k
   searching.value = true
   errorMsg.value = ''
+  const seq = ++searchSeq
+  outcomes.value = []
+  const unlisteners: UnlistenFn[] = []
+  let resolveDone: (() => void) | null = null
+  const donePromise = new Promise<void>((r) => {
+    resolveDone = r
+  })
   try {
-    const ids = engineId.value ? [engineId.value] : undefined
-    // 搜索为多源并发聚合，整体耗时取决于站点数量，放宽到 60s（单站超时上限 10s、无重试）
-    outcomes.value = await invoke<SiteOutcome[]>('search_sites', {
+    // 先订阅事件再发起搜索，站点逐个完成即逐个推送，实时展示
+    unlisteners.push(
+      await listen('search://outcome', (e) => {
+        if (seq !== searchSeq) return
+        outcomes.value.push(e.payload as SiteOutcome)
+      }),
+    )
+    unlisteners.push(
+      await listen('search://done', () => {
+        if (seq === searchSeq) resolveDone?.()
+      }),
+    )
+    const ids = engineIds.value.includes('all') ? undefined : engineIds.value
+    await invoke('search_sites_stream', {
       keyword: k,
       siteIds: ids,
       page: p,
       dns: settings.getSelectedDns()?.base ?? '',
     }, 60000)
-    if (outcomes.value.length === 0) errorMsg.value = '没有启用的搜索源，请先到「搜索源」页订阅或启用'
+    // 等 done 事件（全部站点完成）；60s 兜底防事件丢失
+    await Promise.race([donePromise, new Promise<void>((r) => setTimeout(r, 60000))])
+    if (outcomes.value.length === 0) errorMsg.value = '没有返回结果，请尝试更换关键词或检查搜索源状态'
   } catch (e) {
     errorMsg.value = String(e)
     outcomes.value = []
   } finally {
-    searching.value = false
+    if (seq === searchSeq) searching.value = false
+    unlisteners.forEach((u) => u())
   }
 }
 
 /** 更新地址栏参数（不产生新的历史记录，返回键仍回首页） */
 function submit() {
-  router.replace({ path: '/search', query: { k: keyword.value.trim(), e: engineId.value ?? '' } })
+  router.replace({
+    path: '/search',
+    query: { k: keyword.value.trim(), e: engineIds.value.join(',') },
+  })
 }
 
 watch(
@@ -99,7 +135,8 @@ watch(
     const k = String(route.query.k ?? '')
     if (k && k !== keyword.value) keyword.value = k
     const e = String(route.query.e ?? '')
-    engineId.value = e || null
+    const ids = e.split(',').filter(Boolean)
+    engineIds.value = ids.length ? ids : ['all']
     if (k) void doSearch(k, 1)
   },
   { immediate: true },
@@ -152,24 +189,24 @@ onMounted(async () => {
               density="comfortable"
               @keyup.enter="submit"
             />
-            <div class="d-flex ga-2">
-              <v-select
-                v-model="engineId"
-                :items="[
-                  { title: '全部启用的搜索源', value: null },
-                  ...sitesStore.enabledSites.map((s) => ({ title: s.name, value: s.id })),
-                ]"
-                item-title="title"
-                item-value="value"
-                label="搜索源"
-                hide-details
-                style="min-width: 180px"
-              />
-              <v-btn color="primary" variant="flat" size="large" :loading="searching" :disabled="!keyword.trim()" @click="submit">
-                <v-icon icon="mdi-magnify" class="mr-1" /> 搜索
-              </v-btn>
-            </div>
+            <v-btn color="primary" variant="flat" size="large" :loading="searching" :disabled="!keyword.trim()" @click="submit">
+              <v-icon icon="mdi-magnify" class="mr-1" /> 搜索
+            </v-btn>
           </div>
+          <!-- 搜索源筛选：v-chip-group 多选；「全部」为独占，选中全部时不支持多选 -->
+          <v-chip-group
+            v-model="engineIds"
+            multiple
+            mandatory
+            column
+            color="primary"
+            selected-class="bg-primary text-white"
+            class="mt-3"
+          >
+            <v-chip v-for="opt in engineOptions" :key="opt.id" :value="opt.id" size="small">
+              {{ opt.name }}
+            </v-chip>
+          </v-chip-group>
         </v-sheet>
 
         <!-- 结果区 -->

@@ -20,6 +20,8 @@ const subscribeDialog = ref(false)
 const addDialog = ref(false)
 const editing = ref<SiteConfig | null>(null)
 const form = ref<SiteConfig>(emptyForm())
+const testingSite = ref(false)
+const siteTest = ref<{ ok: boolean; elapsed_ms: number; items: number; error: string | null; samples: string[] } | null>(null)
 
 // 长按（手机）/ 右键（PC）上下文菜单 + 删除二次确认
 // 菜单用 activator 锚定到触发的卡片元素，保证弹出位置正确
@@ -207,6 +209,7 @@ function openAdd() {
   editing.value = null
   form.value = emptyForm()
   syncFormHelpers()
+  siteTest.value = null
   addDialog.value = true
 }
 
@@ -215,7 +218,21 @@ function openEdit(site: SiteConfig) {
   form.value = JSON.parse(JSON.stringify(site)) as SiteConfig
   if (!form.value.request.headers) form.value.request.headers = {}
   syncFormHelpers()
+  siteTest.value = null
   addDialog.value = true
+}
+
+/** 测试连接：用「test」关键词请求一次并解析，展示耗时/条目/样例 */
+async function testSite() {
+  await run(async () => {
+    collectFormHelpers()
+    siteTest.value = null
+    const dns = settings.getSelectedDns()?.base ?? ''
+    const r = await invoke('test_site', { site: form.value, dns }, 30000)
+    siteTest.value = r as { ok: boolean; elapsed_ms: number; items: number; error: string | null; samples: string[] }
+    if (siteTest.value.ok) notice(`连接成功：${siteTest.value.items} 条结果 · ${siteTest.value.elapsed_ms}ms`)
+    else notice('连接失败：' + (siteTest.value.error ?? '未知错误'))
+  })
 }
 
 async function saveSite() {
@@ -471,9 +488,27 @@ onMounted(async () => {
             <v-text-field v-model="magnetSel" label="磁力选择器（留空则用链接）" hide-details />
             <v-select v-model="magnetAttr" :items="['href', 'value', 'data-clipboard-text']" label="磁力属性" hide-details style="max-width: 200px" />
           </div>
+          <!-- 测试结果 -->
+          <template v-if="siteTest">
+            <v-divider class="my-2" />
+            <div v-if="siteTest.ok" class="text-body-2">
+              <v-icon icon="mdi-check-circle" color="success" size="18" class="mr-1" />
+              连接成功 · {{ siteTest.items }} 条结果 · {{ siteTest.elapsed_ms }}ms
+              <div v-if="siteTest.samples.length" class="text-caption text-medium-emphasis mt-1">
+                <v-chip v-for="t in siteTest.samples" :key="t" size="x-small" variant="tonal" class="mr-1 mb-1">{{ t }}</v-chip>
+              </div>
+            </div>
+            <div v-else class="text-body-2 text-error">
+              <v-icon icon="mdi-close-circle" size="18" class="mr-1" />
+              连接失败：{{ siteTest.error || '未知错误' }}
+            </div>
+          </template>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
+          <v-btn variant="tonal" color="secondary" prepend-icon="mdi-connection" :loading="testingSite" @click="testSite">
+            测试连接
+          </v-btn>
           <v-btn variant="text" @click="addDialog = false">取消</v-btn>
           <v-btn color="primary" variant="flat" :disabled="!form.name || !form.request.search_url || !form.expression_model.group" @click="saveSite">
             保存

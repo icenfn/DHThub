@@ -107,6 +107,16 @@ pub struct SiteOutcome {
     pub is_default: bool,
 }
 
+/// 站点连接测试结果（自定义站点弹窗「测试连接」）
+#[derive(serde::Serialize)]
+pub struct SiteTestResult {
+    pub ok: bool,
+    pub elapsed_ms: u64,
+    pub items: usize,
+    pub error: Option<String>,
+    pub samples: Vec<String>,
+}
+
 /// 站点持久化数据（sites.json）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SitesData {

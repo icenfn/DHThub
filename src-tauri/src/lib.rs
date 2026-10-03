@@ -7,10 +7,10 @@ mod search;
 mod sites;
 
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
-use models::{SiteConfig, SiteOutcome};
+use models::{SiteConfig, SiteOutcome, SiteTestResult};
 use sites::SiteStore;
-use std::time::Duration;
-use tauri::Manager;
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// 全局状态
 pub struct AppState {
@@ -139,13 +139,17 @@ async fn reset_sites(state: tauri::State<'_, AppState>) -> Result<Vec<SiteConfig
 // ---------- 搜索 ----------
 
 #[tauri::command]
-async fn search_sites(
+/// 流式多源搜索：每完成一个站点立即通过 search://outcome 事件推送，
+/// 全部结束后发送 search://done（前端实时展示，不再等所有站点完成）
+#[tauri::command]
+async fn search_sites_stream(
+    app: AppHandle,
     state: tauri::State<'_, AppState>,
     keyword: String,
     site_ids: Option<Vec<String>>,
     page: u32,
     dns: String,
-) -> Result<Vec<SiteOutcome>, String> {
+) -> Result<(), String> {
     if keyword.trim().is_empty() {
         return Err("搜索关键词不能为空".into());
     }
@@ -165,7 +169,47 @@ async fn search_sites(
         d if d.is_empty() => state.http.clone(),
         d => dns::build_client(d)?,
     };
-    Ok(search::search_multi(&client, sites, &keyword, page).await)
+    let _ = search::search_multi(&client, sites, &keyword, page, |o| {
+        let _ = app.emit("search://outcome", &o);
+    })
+    .await;
+    let _ = app.emit("search://done", &keyword);
+    Ok(())
+}
+
+/// 站点连接测试：用「test」关键词请求一次并解析，返回耗时/条目/样例
+#[tauri::command]
+async fn test_site(
+    state: tauri::State<'_, AppState>,
+    site: SiteConfig,
+    dns: String,
+) -> Result<SiteTestResult, String> {
+    let client = match dns.trim() {
+        d if d.is_empty() => state.http.clone(),
+        d => dns::build_client(d)?,
+    };
+    let keyword_enc = urlencoding::encode("test").to_string();
+    let url = search::build_url(&site, &keyword_enc, 1);
+    let started = Instant::now();
+    match search::fetch_html(&client, &site, &url).await {
+        Ok(html) => {
+            let items = search::parse_html(&html, &site.expression_model);
+            Ok(SiteTestResult {
+                ok: true,
+                elapsed_ms: started.elapsed().as_millis() as u64,
+                items: items.len(),
+                error: None,
+                samples: items.iter().take(5).map(|i| i.title.clone()).collect(),
+            })
+        }
+        Err(e) => Ok(SiteTestResult {
+            ok: false,
+            elapsed_ms: started.elapsed().as_millis() as u64,
+            items: 0,
+            error: Some(e),
+            samples: vec![],
+        }),
+    }
 }
 
 // ---------- 历史 ----------
@@ -239,7 +283,8 @@ pub fn run() {
             export_sites,
             import_sites,
             reset_sites,
-            search_sites,
+            search_sites_stream,
+            test_site,
             add_history,
             get_history,
             clear_history,

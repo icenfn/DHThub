@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0
+
+- 修复设置页 DNS 列表为空：onMounted 漏调 refreshDns，导致进入设置页 DNS 列表不渲染
+- 修复搜索报「任务异常: Expect rustls-platform-verifier to be initialized」：reqwest 0.13 的 rustls 特性在 Android 上依赖平台证书验证器且未初始化即 panic；改用 reqwest 0.12 + rustls-tls-webpki-roots（内置 Mozilla 根证书，全平台无需初始化），搜索/订阅/DNS 测速共用
+- 修复搜索结果出现「未知站点」：并发搜索任务 panic 兜底改为携带真实站点名（提前捕获站点信息）；仍每站独立 tokio 任务 + 信号量限流，单站异常不影响整体
+- 添加自定义站点弹窗新增「测试连接」按钮：一键用 test 关键词请求并解析，展示耗时 / 结果条数 / 标题样例（成功或失败原因）
+- 搜索结果页「搜索源」下拉改为 v-chip-group（全部 + 各搜索源）多选：全部为独占（选中全部时不可多选），必填至少一个，选具体源支持多选
+- 搜索改为实时返回：站点逐个完成立即通过 search://outcome 事件推送到前端，结果边出边显示，不再等全部站点完成
+- 修复移动端双指缩放页面：viewport 禁止缩放 + touch-action: manipulation + 禁选中（输入框除外）
+- 版本号 0.3.7 -> 0.4.0
+
 ## v0.3.7
 
 - DNS 改为镜像式管理：内置 AliDNS / DNSPod / Cloudflare / 114DNS 可选可测速，支持自定义添加 / 删除；测速为 Rust 并发解析探针（example.com 耗时）

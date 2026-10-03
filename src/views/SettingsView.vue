@@ -302,6 +302,7 @@ onMounted(async () => {
   await settings.ready()
   themeMode.value = settings.get('theme')
   autoCheck.value = settings.get('autoCheckUpdate')
+  await refreshDns()
   await refreshMirrors()
   await sitesStore.load().catch(() => undefined)
 })
