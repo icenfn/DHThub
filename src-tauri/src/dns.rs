@@ -26,11 +26,10 @@ impl Resolve for CustomDnsResolver {
 
 /// 测速用解析选项：快速失败（2s 超时、1 次尝试），UDP 失败自动走 TCP 兜底
 fn speed_opt() -> ResolverOpts {
-    ResolverOpts {
-        timeout: Duration::from_secs(2),
-        attempts: 1,
-        ..Default::default()
-    }
+    let mut opts = ResolverOpts::default();
+    opts.timeout = Duration::from_secs(2);
+    opts.attempts = 1;
+    opts
 }
 
 /// 构造 UDP + TCP 双通道的解析配置（部分网络屏蔽 UDP:53，TCP 兜底）
@@ -61,14 +60,10 @@ pub fn build_client(dns: &str) -> Result<reqwest::Client, String> {
         .parse()
         .map_err(|_| format!("DNS 地址无效：{dns}"))?;
     // 搜索用解析：UDP + TCP 兜底，3s 超时 1 次尝试（避免 DNS 异常拖垮整批搜索）
-    let resolver = TokioAsyncResolver::tokio(
-        dns_config(addr),
-        ResolverOpts {
-            timeout: Duration::from_secs(3),
-            attempts: 1,
-            ..Default::default()
-        },
-    );
+    let mut opts = ResolverOpts::default();
+    opts.timeout = Duration::from_secs(3);
+    opts.attempts = 1;
+    let resolver = TokioAsyncResolver::tokio(dns_config(addr), opts);
     // reqwest 0.12 的 dns_resolver 需要具体类型（非 dyn），直接传入具体 resolver
     let resolver = Arc::new(CustomDnsResolver(resolver));
     reqwest::Client::builder()
