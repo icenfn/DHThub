@@ -48,7 +48,8 @@ pub fn build_client(dns: &str) -> Result<reqwest::Client, String> {
     let mut cfg = ResolverConfig::new();
     cfg.add_name_server(NameServerConfig::new(addr, Protocol::Udp));
     let resolver = TokioAsyncResolver::tokio(cfg, ResolverOpts::default());
-    let resolver: Arc<dyn Resolve> = Arc::new(CustomDnsResolver(resolver));
+    // reqwest 0.12 的 dns_resolver 需要具体类型（非 dyn），直接传入具体 resolver
+    let resolver = Arc::new(CustomDnsResolver(resolver));
     reqwest::Client::builder()
         .user_agent(format!(
             "DHThub/{} (+https://github.com/icenfn/DHThub)",

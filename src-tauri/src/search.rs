@@ -43,9 +43,9 @@ where
             );
             // 信号量关闭（不可能发生）时也继续执行，避免整批搜索卡死
             let _permit = semaphore.acquire().await.ok();
-            // 捕获 panic：单站异常只影响本站
+            // 捕获 panic：单站异常只影响本站（AssertUnwindSafe 包裹 future 再 await）
             let result =
-                std::panic::AssertUnwindSafe(search_one(&client, &site, &keyword_enc, page).await)
+                std::panic::AssertUnwindSafe(search_one(&client, &site, &keyword_enc, page))
                     .catch_unwind()
                     .await;
             match result {
