@@ -146,8 +146,8 @@ pub(crate) async fn fetch_html(
 }
 
 /// POST 场景：解析模板中的 keyword/page 参数作为表单字段
-fn build_form(site: &SiteConfig, url: &str) -> Vec<(&'static str, String)> {
-    let mut form: Vec<(&'static str, String)> = vec![];
+fn build_form(site: &SiteConfig, url: &str) -> Vec<(String, String)> {
+    let mut form: Vec<(String, String)> = vec![];
     let lower = site.request.search_url.to_lowercase();
     if lower.contains("[keyword]") {
         // 从 URL 中还原占位符位置再填充表单字段（字段名可用 keyword_field 覆盖）
@@ -162,7 +162,7 @@ fn build_form(site: &SiteConfig, url: &str) -> Vec<(&'static str, String)> {
         }
     }
     if form.is_empty() {
-        form.push(("keyword", String::new()));
+        form.push(("keyword".to_string(), String::new()));
     }
     form
 }
