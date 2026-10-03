@@ -92,9 +92,10 @@ async function doSearch(kw = keyword.value, p = 1) {
   try {
     // 先订阅事件再发起搜索，站点逐个完成即逐个推送，实时展示
     unlisteners.push(
-      await listen('search://outcome', (e) => {
+      await listen('search://batch', (e) => {
         if (seq !== searchSeq) return
-        outcomes.value.push(e.payload as SiteOutcome)
+        const batch = e.payload as SiteOutcome[]
+        if (Array.isArray(batch)) outcomes.value.push(...batch)
       }),
     )
     unlisteners.push(

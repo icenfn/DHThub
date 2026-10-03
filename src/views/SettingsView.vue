@@ -119,13 +119,13 @@ async function clearSearchHistory() {
 // ---------- DNS ----------
 async function refreshDns() {
   dnsServers.value = settings.getDnsServers()
-  selectedDnsId.value = settings.get('dnsId')
+  selectedDnsId.value = settings.get('dnsId') ?? ''
 }
 
 async function selectDns(d: DnsServer) {
   selectedDnsId.value = d.id
   await settings.selectDns(d.id)
-  notice(`已切换 DNS：${d.name}（${d.base}）`)
+  notice(d.id ? `已切换 DNS：${d.name}（${d.base}）` : '已切换为系统默认 DNS')
 }
 
 async function runDnsSpeedTest() {
@@ -396,6 +396,26 @@ onMounted(async () => {
             </template>
           </v-card-item>
           <v-list density="compact" class="px-2 pb-2">
+            <!-- 系统默认：不启用自定义 DNS，走系统解析（默认选中） -->
+            <v-list-item
+              :active="selectedDnsId === ''"
+              rounded="xl"
+              class="mb-1"
+              @click="selectDns({ id: '', name: '系统默认', base: '' })"
+            >
+              <template #prepend>
+                <v-icon
+                  :icon="selectedDnsId === '' ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
+                  :color="selectedDnsId === '' ? 'primary' : 'grey'"
+                  size="20"
+                />
+              </template>
+              <v-list-item-title class="text-body-2 font-weight-medium">
+                系统默认
+                <v-chip v-if="selectedDnsId === ''" size="x-small" color="primary" variant="tonal" class="ml-1">当前</v-chip>
+              </v-list-item-title>
+              <v-list-item-subtitle class="text-caption font-family-monospace">使用系统 DNS</v-list-item-subtitle>
+            </v-list-item>
             <v-list-item
               v-for="row in dnsRows"
               :key="row.id"

@@ -168,8 +168,9 @@ async fn search_sites_stream(
         d if d.is_empty() => state.http.clone(),
         d => dns::build_client(d)?,
     };
-    let _ = search::search_multi(&client, sites, &keyword, page, |o| {
-        let _ = app.emit("search://outcome", &o);
+    // 批量回传：每批最多 4 站或 250ms 一次，减少事件洪峰与前端重渲染
+    let _ = search::search_multi(&client, sites, &keyword, page, |batch| {
+        let _ = app.emit("search://batch", &batch);
     })
     .await;
     let _ = app.emit("search://done", &keyword);

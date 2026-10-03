@@ -18,10 +18,10 @@ pub async fn search_multi<F>(
     sites: Vec<SiteConfig>,
     keyword: &str,
     page: u32,
-    mut on_outcome: F,
+    mut on_batch: F,
 ) -> Vec<SiteOutcome>
 where
-    F: FnMut(SiteOutcome),
+    F: FnMut(Vec<SiteOutcome>),
 {
     if sites.is_empty() {
         return vec![];
@@ -64,14 +64,14 @@ where
     }
 
     let mut out = Vec::with_capacity(tasks.len());
+    // 结果批量回传：攒够 4 条或 250ms 冲刷一次，避免逐站事件压垮前端渲染
+    let mut pending: Vec<SiteOutcome> = Vec::new();
+    let mut last_flush = tokio::time::Instant::now();
     while let Some(res) = tasks.join_next().await {
         match res {
-            Ok(o) => {
-                on_outcome(o.clone());
-                out.push(o);
-            }
+            Ok(o) => pending.push(o),
             // 任务本身被 abort 等极端情况：兜底一条失败记录
-            Err(e) => out.push(SiteOutcome {
+            Err(e) => pending.push(SiteOutcome {
                 site_id: String::new(),
                 site_name: "未知站点".into(),
                 success: false,
@@ -81,6 +81,15 @@ where
                 is_default: false,
             }),
         }
+        if pending.len() >= 4 || last_flush.elapsed() >= tokio::time::Duration::from_millis(250) {
+            out.extend(pending.iter().cloned());
+            on_batch(std::mem::take(&mut pending));
+            last_flush = tokio::time::Instant::now();
+        }
+    }
+    if !pending.is_empty() {
+        out.extend(pending.iter().cloned());
+        on_batch(std::mem::take(&mut pending));
     }
     out
 }

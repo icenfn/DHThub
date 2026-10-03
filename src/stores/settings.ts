@@ -54,7 +54,7 @@ const DEFAULTS: SettingsData = {
   githubMirrorId: 'direct',
   autoCheckUpdate: true,
   dnsServers: BUILTIN_DNS.map((d) => ({ ...d })),
-  dnsId: 'alidns',
+  dnsId: '',
 }
 
 class SettingsStore {
@@ -171,7 +171,8 @@ class SettingsStore {
       merged.dnsServers.push({ id: `d${Date.now().toString(36)}`, name: deriveDnsName(legacyDns.trim()), base: legacyDns.trim() })
       merged.dnsId = merged.dnsServers[merged.dnsServers.length - 1].id
     }
-    if (!merged.dnsServers.some((d) => d.id === merged.dnsId)) {
+    // '' = 系统默认（合法），仅在确实无效时回退
+    if (merged.dnsId !== '' && !merged.dnsServers.some((d) => d.id === merged.dnsId)) {
       merged.dnsId = merged.dnsServers[0]?.id ?? ''
     }
     return merged
@@ -284,7 +285,8 @@ class SettingsStore {
   }
 
   async selectDns(id: string) {
-    if (!this.data.dnsServers.some((d) => d.id === id)) return
+    // '' = 系统默认（不启用自定义 DNS）
+    if (id !== '' && !this.data.dnsServers.some((d) => d.id === id)) return
     this.data.dnsId = id
     await this.persist()
   }
