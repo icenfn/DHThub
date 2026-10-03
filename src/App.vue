@@ -1,10 +1,13 @@
 <script setup lang="ts">
-// 应用外壳：仅承载全局逻辑（主题 / 更新提示），页面框架由各路由页面自行提供
-import { onMounted, ref, watch } from 'vue'
+// 应用外壳：仅承载全局逻辑（主题 / 更新提示 / 返回键），页面框架由各路由页面自行提供
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
 import { useMediaQuery } from '@vueuse/core'
+import { invoke } from '@tauri-apps/api/core'
 import { settings } from './stores/settings'
 import { isTauri } from './lib/tauri'
+import { closeTopOverlay, pushOverlay } from './lib/overlay'
 import {
   checkUpdate,
   openReleasePage,
@@ -28,6 +31,55 @@ watch([updateToast, updateHasNew], () => {
 })
 
 const theme = useTheme()
+
+const router = useRouter()
+
+// 弹层返回键支持：PC ESC 直接关闭最上层弹层（Vuetify 自身的 ESC 关闭仍生效）；
+// Android 硬件返回键由原生 MainActivity 派发 android:back 事件，前端关闭弹层 / 返回历史 / 退出
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && closeTopOverlay()) {
+    e.preventDefault()
+  }
+}
+let onAndroidBack: (() => void) | null = null
+function setupAndroidBack() {
+  if (!isTauri) return
+  const handler = async () => {
+    // 有弹层先关弹层
+    if (closeTopOverlay()) return
+    // 有历史记录则返回上一页
+    if (window.history.length > 1) {
+      router.back()
+      return
+    }
+    // 兜底退出应用
+    try {
+      await invoke('exit_app')
+    } catch {
+      /* 桌面端无此命令时忽略 */
+    }
+  }
+  window.addEventListener('android:back', handler)
+  onAndroidBack = () => window.removeEventListener('android:back', handler)
+}
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  setupAndroidBack()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  onAndroidBack?.()
+})
+
+// 更新弹窗本身也注册到弹层栈（关闭时自动注销）
+watch(updateDialog, (v, _o, onCleanup) => {
+  if (v) {
+    const off = pushOverlay(() => {
+      updateDialog.value = false
+    })
+    onCleanup(off)
+  }
+})
 const prefersDark = useMediaQuery('(prefers-color-scheme: dark)')
 
 async function applyTheme() {

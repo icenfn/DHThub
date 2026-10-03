@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useSitesStore } from '../stores/sites'
@@ -7,6 +7,7 @@ import { settings, DEFAULT_SUBSCRIBE_URL } from '../stores/settings'
 import { invoke, isTauri } from '../lib/tauri'
 import { httpGetText } from '../lib/http'
 import { mirrorUrl } from '../lib/mirrors'
+import { pushOverlay } from '../lib/overlay'
 import type { SiteConfig } from '../types'
 
 const sitesStore = useSitesStore()
@@ -24,38 +25,30 @@ const testingSite = ref(false)
 const siteTest = ref<{ ok: boolean; elapsed_ms: number; items: number; error: string | null; samples: string[] } | null>(null)
 
 // 长按（手机）/ 右键（PC）上下文菜单 + 删除二次确认
-// 菜单用 activator 锚定到触发的卡片元素，保证弹出位置正确
+// 菜单使用触发点坐标定位（position-x/y），避免锚定元素导致菜单位置偏差
 const contextMenu = ref<{ show: boolean; site: SiteConfig | null }>({ show: false, site: null })
-const menuActivator = ref<Element | null>(null)
+const menuPos = ref<{ x: number; y: number } | null>(null)
 const deleteDialog = ref(false)
 const deletingSite = ref<SiteConfig | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
 
-const rowEls = new Map<string, Element>()
-
-function collectRowEl(siteId: string | undefined, el: Element | null) {
-  if (!siteId) return
-  if (el) rowEls.set(siteId, el)
-  else rowEls.delete(siteId)
-}
-
-function openContextMenu(site: SiteConfig, el: Element) {
+function openContextMenu(site: SiteConfig, e: { clientX: number; clientY: number }) {
   if (longPressTimer) {
     clearTimeout(longPressTimer)
     longPressTimer = null
   }
-  menuActivator.value = rowEls.get(site.id ?? '') ?? el
+  menuPos.value = { x: e.clientX, y: e.clientY }
   contextMenu.value = { show: true, site }
 }
 
 function onRowContextmenu(site: SiteConfig, e: MouseEvent) {
-  openContextMenu(site, e.currentTarget as Element)
+  openContextMenu(site, e)
 }
 
 function onRowTouchstart(site: SiteConfig, e: TouchEvent) {
   const t = e.touches[0]
   if (!t) return
-  longPressTimer = setTimeout(() => openContextMenu(site, e.currentTarget as Element), 500)
+  longPressTimer = setTimeout(() => openContextMenu(site, { clientX: t.clientX, clientY: t.clientY }), 500)
 }
 
 function cancelLongPress() {
@@ -205,6 +198,30 @@ async function removeSite(site: SiteConfig) {
   })
 }
 
+// 弹层栈注册：手机返回键 / PC ESC 关闭
+watch(subscribeDialog, (v, _o, onCleanup) => {
+  if (v) onCleanup(pushOverlay(() => { subscribeDialog.value = false }))
+})
+watch(deleteDialog, (v, _o, onCleanup) => {
+  if (v) onCleanup(pushOverlay(() => { deleteDialog.value = false }))
+})
+watch(addDialog, (v, _o, onCleanup) => {
+  if (v) onCleanup(pushOverlay(() => { addDialog.value = false }))
+})
+watch(
+  () => contextMenu.value.show,
+  (v, _o, onCleanup) => {
+    if (v) {
+      onCleanup(
+        pushOverlay(() => {
+          contextMenu.value.show = false
+          contextMenu.value.site = null
+        }),
+      )
+    }
+  },
+)
+
 function openAdd() {
   editing.value = null
   form.value = emptyForm()
@@ -325,7 +342,6 @@ onMounted(async () => {
     <v-card
       v-for="site in sitesStore.sites"
       :key="site.id"
-      :ref="(el) => collectRowEl(site.id, el as Element | null)"
       rounded="lg"
       class="mb-2"
       @contextmenu.prevent="onRowContextmenu(site, $event)"
@@ -341,6 +357,8 @@ onMounted(async () => {
           hide-details
           density="compact"
           class="mr-2"
+          @touchstart.stop
+          @click.stop
           @update:model-value="toggleEnabled(site, !!$event)"
         />
         <div class="flex-grow-1 mr-2" style="min-width: 0">
@@ -409,7 +427,12 @@ onMounted(async () => {
     />
 
     <!-- 长按 / 右键上下文菜单 -->
-    <v-menu v-model="contextMenu.show" :activator="menuActivator || undefined" min-width="200">
+    <v-menu
+      v-model="contextMenu.show"
+      :position-x="menuPos?.x ?? 0"
+      :position-y="menuPos?.y ?? 0"
+      min-width="200"
+    >
       <v-list density="compact" nav>
         <v-list-item prepend-icon="mdi-pencil-outline" title="修改" @click="editFromMenu" />
         <v-list-item

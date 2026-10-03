@@ -225,7 +225,7 @@ jobs:
               f.write(c)
           EOF
 
-      - name: MainActivity 预留系统栏 inset
+      - name: MainActivity 系统栏 inset + 返回键派发 android:back（前端关闭弹层/返回/退出）
         run: |
           python3 - <<'PYEOF'
           import os
@@ -253,11 +253,41 @@ jobs:
               '        }',
               '        window.decorView.requestApplyInsets()',
               '    }',
+              '',
+              '    // 返回键：派发 android:back 事件给前端（前端关闭弹层/返回历史/退出应用），',
+              '    // 不再直接结束 Activity，保证弹窗可被返回键关闭',
+              '    @Deprecated("Deprecated in Java")',
+              '    override fun onBackPressed() {',
+              '        notifyWebviewBack()',
+              '    }',
+              '',
+              '    private fun notifyWebviewBack() {',
+              '        try {',
+              '            var web: android.webkit.WebView? = null',
+              '            fun scan(v: android.view.View) {',
+              '                if (web != null) return',
+              '                if (v is android.webkit.WebView) {',
+              '                    web = v',
+              '                    return',
+              '                }',
+              '                if (v is android.view.ViewGroup) {',
+              '                    for (i in 0 until v.childCount) scan(v.getChildAt(i))',
+              '                }',
+              '            }',
+              '            scan(window.decorView)',
+              '            web?.post {',
+              '                web!!.evaluateJavascript(',
+              '                    "window.dispatchEvent(new CustomEvent(\'android:back\'))", null)',
+              '            }',
+              '        } catch (_: Exception) {',
+              '            finish()',
+              '        }',
+              '    }',
               '}',
           ])
           with open(p, 'w', encoding='utf-8') as f:
               f.write(code)
-          print('MainActivity insets patch OK')
+          print('MainActivity insets + back patch OK')
           PYEOF
 
       - name: 配置签名（有密钥用正式签名，否则生成 debug 签名保证 APK 可安装）

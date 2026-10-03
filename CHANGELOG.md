@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.2
+
+- GitHub 镜像新增 3 个内置：axisnow.gh-proxy.org、cdn.gh-proxy.org、gh.dpik.top（共直连 + 4 个，镜像列表仅显示链接）。
+- 清理 19 个失效搜索源（磁力猫、种子吧、简单动漫、动漫花园、SOBT、磁力蜘蛛、磁力宝、吃力网、磁力树、小草磁力、种子搜、磁力多 ×2、磁狐搜索、海盗船、磁力天堂、飞鱼磁力、磁力海、BTMirror），内置源精简为 9 个。
+- 搜索源支持关键词 base64 编码（新增 keyword_encode 配置）：ØMagnet 改走 `https://0mag.me/search?q=[b64]`、磁力狗改走 `http://clg38.sbs/search?word=[b64]&sort=time`（已实测均可出结果）。
+- 重写失效站模板与选择器：btfox（btfox19.top 已停放，改用同源 btfox20.top，POST / 表单字段 wd，新增 keyword_field 支持）、磁力狗（修复 group 选择器原 XPath 语法 `ul#Search_list_wrapper/li` 无法解析的问题，改合法 CSS `ul#Search_list_wrapper li`）、BT目录（结果行改 `article.item`，选择器已实测）、1024BT（域名换官方地址发布页所列 www.1024btso.com，沙箱无法连通待实测）、吴签磁力（域名 wuqianwo.cc→wuqianro.cc，搜索路径 /search?keyword=；站点有 reCAPTCHA 人机验证，直连爬取无法返回结果，需浏览器环境）。
+- 搜索源页长按菜单修复：改为在触发点坐标弹出（不再锚定卡片导致出现在左侧开关处）；点击开关不再误弹菜单（开关触摸/点击不再冒泡触发长按计时）；点击菜单外部 / 手机返回键 / PC ESC 均可关闭菜单。
+- 所有弹窗支持手机返回键关闭：Android 原生 MainActivity 拦截返回键并派发 android:back 事件，前端按「关弹层 → 返回历史 → 退出应用」顺序处理；PC ESC 关闭弹层有全局兜底（Vuetify 自身 ESC 关闭仍生效）。
+- 搜索逻辑回滚到 v0.3.7 形态：并发搜索一次性返回全部站点结果（search_sites 命令，无流式事件/批量回调）；保留 v0.4.0 的 reqwest 0.12（防 Android rustls panic）、搜索源多选 chip-group、测试连接；保留 v0.4.1 的 DNS 系统默认与快速失败/TCP 兜底。
+
 ## v0.4.1
 
 - 修复首页点击搜索后页面卡死：v0.3.7 起搜索默认走自定义 DNS（AliDNS）解析，网络屏蔽 UDP:53 时每个站点的域名解析都要等满超时（约 10s），28 站 / 并发 8 导致整次搜索拖到 40s+，表现为页面卡住。本次把搜索默认改为系统 DNS（设置页新增「系统默认」项，可随时切回自定义），自定义 DNS 解析改为 3s 超时 + 1 次尝试 + TCP 兜底

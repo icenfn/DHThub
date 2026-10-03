@@ -27,6 +27,12 @@ pub struct RequestConfig {
     /// 单站超时（毫秒），默认 12000
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
+    /// 关键词编码：默认 URL 编码；"base64" 时先 base64 再填入 [keyword]
+    #[serde(default)]
+    pub keyword_encode: Option<String>,
+    /// POST 表单关键词字段名（默认 "keyword"），部分站点用 wd 等字段名
+    #[serde(default)]
+    pub keyword_field: Option<String>,
 }
 
 fn default_method() -> String {

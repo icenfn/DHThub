@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { pushOverlay } from '../lib/overlay'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { isTauri } from '../lib/tauri'
@@ -15,12 +16,11 @@ const model = defineModel<boolean>({ required: true })
 const toast = ref('')
 const showToast = ref(false)
 
-watch(
-  () => model.value,
-  (v) => {
-    if (v) toast.value = ''
-  },
-)
+// 弹层栈注册：手机返回键 / PC ESC 关闭
+watch(model, (v, _o, onCleanup) => {
+  if (v) onCleanup(pushOverlay(() => { model.value = false }))
+  if (v) toast.value = ''
+})
 
 async function copy() {
   if (!props.item) return

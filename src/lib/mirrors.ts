@@ -3,10 +3,13 @@
 
 import type { GithubMirror, MirrorSpeedResult } from '../types'
 
-/** 内置 GitHub 镜像（2 个，不可删除；镜像列表仅展示链接） */
+/** 内置 GitHub 镜像（不可删除；镜像列表仅展示链接） */
 export const BUILTIN_MIRRORS: GithubMirror[] = [
   { id: 'direct', name: 'GitHub 官方（直连）', base: '', builtin: true },
   { id: 'ghproxy', name: 'gh-proxy.com', base: 'https://gh-proxy.com/', builtin: true },
+  { id: 'axisnow', name: 'axisnow.gh-proxy.org', base: 'https://axisnow.gh-proxy.org/', builtin: true },
+  { id: 'cdn', name: 'cdn.gh-proxy.org', base: 'https://cdn.gh-proxy.org/', builtin: true },
+  { id: 'ghdpik', name: 'gh.dpik.top', base: 'https://gh.dpik.top/', builtin: true },
 ]
 
 /** 默认订阅源（探针/订阅测试目标） */

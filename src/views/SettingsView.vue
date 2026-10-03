@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { settings } from '../stores/settings'
 import { useSitesStore } from '../stores/sites'
 import { invoke, isTauri } from '../lib/tauri'
 import { speedTestMirror, MIRROR_PROBE_URL } from '../lib/mirrors'
+import { pushOverlay } from '../lib/overlay'
 import { checkUpdate, updateChecking } from '../lib/update'
 import type { DnsServer, DnsSpeedResult, GithubMirror, MirrorSpeedResult } from '../types'
 
@@ -53,6 +54,13 @@ const speeds = ref<Record<string, MirrorSpeedResult>>({})
 const testing = ref(false)
 const testingIds = ref<Set<string>>(new Set())
 const addMirrorDialog = ref(false)
+// 弹层栈注册：手机返回键 / PC ESC 关闭
+watch(addDnsDialog, (v, _o, onCleanup) => {
+  if (v) onCleanup(pushOverlay(() => { addDnsDialog.value = false }))
+})
+watch(addMirrorDialog, (v, _o, onCleanup) => {
+  if (v) onCleanup(pushOverlay(() => { addMirrorDialog.value = false }))
+})
 const newMirrorBase = ref('')
 
 /** 镜像在列表中的展示文本：只显示链接；直连显示官方地址 */

@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { pushOverlay } from '../lib/overlay'
 import type { SiteOutcome } from '../types'
 
 const model = defineModel<boolean>({ required: true })
+
+// 弹层栈注册：手机返回键 / PC ESC 关闭
+watch(model, (v, _o, onCleanup) => {
+  if (v) onCleanup(pushOverlay(() => { model.value = false }))
+})
 
 function fmt(ms: number) {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`

@@ -2,7 +2,6 @@
 // 搜索结果独立页面：读取首页传入的关键词/搜索源参数，执行搜索并展示聚合结果
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '../lib/tauri'
 import { useSitesStore } from '../stores/sites'
 import { settings } from '../stores/settings'
@@ -28,8 +27,6 @@ watch(engineIds, (v) => {
 const page = ref(1)
 const searching = ref(false)
 const outcomes = ref<SiteOutcome[]>([])
-// 搜索会话序号：丢弃过期搜索（快速连点时）的迟到事件
-let searchSeq = 0
 const searchedKeyword = ref('')
 const errorMsg = ref('')
 
@@ -82,43 +79,22 @@ async function doSearch(kw = keyword.value, p = 1) {
   searchedKeyword.value = k
   searching.value = true
   errorMsg.value = ''
-  const seq = ++searchSeq
   outcomes.value = []
-  const unlisteners: UnlistenFn[] = []
-  let resolveDone: (() => void) | null = null
-  const donePromise = new Promise<void>((r) => {
-    resolveDone = r
-  })
   try {
-    // 先订阅事件再发起搜索，站点逐个完成即逐个推送，实时展示
-    unlisteners.push(
-      await listen('search://batch', (e) => {
-        if (seq !== searchSeq) return
-        const batch = e.payload as SiteOutcome[]
-        if (Array.isArray(batch)) outcomes.value.push(...batch)
-      }),
-    )
-    unlisteners.push(
-      await listen('search://done', () => {
-        if (seq === searchSeq) resolveDone?.()
-      }),
-    )
     const ids = engineIds.value.includes('all') ? undefined : engineIds.value
-    await invoke('search_sites_stream', {
+    // 搜索为多源并发聚合，整体耗时取决于站点数量，放宽到 60s（单站超时上限 10s、无重试）
+    outcomes.value = await invoke<SiteOutcome[]>('search_sites', {
       keyword: k,
       siteIds: ids,
       page: p,
       dns: settings.getSelectedDns()?.base ?? '',
     }, 60000)
-    // 等 done 事件（全部站点完成）；60s 兜底防事件丢失
-    await Promise.race([donePromise, new Promise<void>((r) => setTimeout(r, 60000))])
     if (outcomes.value.length === 0) errorMsg.value = '没有返回结果，请尝试更换关键词或检查搜索源状态'
   } catch (e) {
     errorMsg.value = String(e)
     outcomes.value = []
   } finally {
-    if (seq === searchSeq) searching.value = false
-    unlisteners.forEach((u) => u())
+    searching.value = false
   }
 }
 

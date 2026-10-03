@@ -10,7 +10,7 @@ use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
 use models::{SiteConfig, SiteOutcome, SiteTestResult};
 use sites::SiteStore;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::Manager;
 
 /// 全局状态
 pub struct AppState {
@@ -138,17 +138,15 @@ async fn reset_sites(state: tauri::State<'_, AppState>) -> Result<Vec<SiteConfig
 
 // ---------- 搜索 ----------
 
-/// 流式多源搜索：每完成一个站点立即通过 search://outcome 事件推送，
-/// 全部结束后发送 search://done（前端实时展示，不再等所有站点完成）
+/// 多源并发搜索：一次性返回全部站点结果（v0.3.7 行为）
 #[tauri::command]
-async fn search_sites_stream(
-    app: AppHandle,
+async fn search_sites(
     state: tauri::State<'_, AppState>,
     keyword: String,
     site_ids: Option<Vec<String>>,
     page: u32,
     dns: String,
-) -> Result<(), String> {
+) -> Result<Vec<SiteOutcome>, String> {
     if keyword.trim().is_empty() {
         return Err("搜索关键词不能为空".into());
     }
@@ -168,13 +166,13 @@ async fn search_sites_stream(
         d if d.is_empty() => state.http.clone(),
         d => dns::build_client(d)?,
     };
-    // 批量回传：每批最多 4 站或 250ms 一次，减少事件洪峰与前端重渲染
-    let _ = search::search_multi(&client, sites, &keyword, page, |batch| {
-        let _ = app.emit("search://batch", &batch);
-    })
-    .await;
-    let _ = app.emit("search://done", &keyword);
-    Ok(())
+    Ok(search::search_multi(&client, sites, &keyword, page).await)
+}
+
+/// 退出应用（Android 返回键兜底：无弹窗且无历史时调用）
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 /// 站点连接测试：用「test」关键词请求一次并解析，返回耗时/条目/样例
@@ -188,8 +186,7 @@ async fn test_site(
         d if d.is_empty() => state.http.clone(),
         d => dns::build_client(d)?,
     };
-    let keyword_enc = urlencoding::encode("test").to_string();
-    let url = search::build_url(&site, &keyword_enc, 1);
+    let url = search::build_url(&site, "test", 1);
     let started = Instant::now();
     match search::fetch_html(&client, &site, &url).await {
         Ok(html) => {
@@ -283,8 +280,9 @@ pub fn run() {
             export_sites,
             import_sites,
             reset_sites,
-            search_sites_stream,
+            search_sites,
             test_site,
+            exit_app,
             add_history,
             get_history,
             clear_history,

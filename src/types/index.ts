@@ -11,6 +11,10 @@ export interface RequestConfig {
   search_url: string
   headers: Record<string, string>
   timeout_ms?: number
+  /** 关键词编码：默认 URL 编码；'base64' 时先 base64 再填入 [keyword] */
+  keyword_encode?: string
+  /** POST 表单关键词字段名（默认 keyword），部分站点用 wd 等字段名 */
+  keyword_field?: string
 }
 
 export interface ExpressionModel {
