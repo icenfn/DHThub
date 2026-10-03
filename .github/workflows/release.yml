@@ -74,15 +74,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Build Linux bundles (deb / rpm)
-        run: npm run tauri build -- --bundles deb,rpm 2>&1 | tee /tmp/build.log
-        continue-on-error: true
-
-      - name: Upload build log (debug)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-build-log
-          path: /tmp/build.log
+        run: npm run tauri build -- --bundles deb,rpm
 
       - name: Rename artifacts
         id: rename-linux

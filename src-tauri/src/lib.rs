@@ -138,7 +138,6 @@ async fn reset_sites(state: tauri::State<'_, AppState>) -> Result<Vec<SiteConfig
 
 // ---------- 搜索 ----------
 
-#[tauri::command]
 /// 流式多源搜索：每完成一个站点立即通过 search://outcome 事件推送，
 /// 全部结束后发送 search://done（前端实时展示，不再等所有站点完成）
 #[tauri::command]
