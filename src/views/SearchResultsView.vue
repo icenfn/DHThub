@@ -20,9 +20,16 @@ const engineOptions = computed(() => [
   { id: 'all', name: '全部' },
   ...sitesStore.enabledSites.map((s) => ({ id: s.id ?? '', name: s.name })),
 ])
+// 选「全部」时独占：只保留最后选中的一项；值与当前一致时不再赋值（避免新数组引用触发 watch 死循环）
 watch(engineIds, (v) => {
-  if (v.length === 0) engineIds.value = ['all']
-  else if (v.includes('all')) engineIds.value = [v[v.length - 1]]
+  if (v.length === 0) {
+    engineIds.value = ['all']
+    return
+  }
+  if (v.includes('all')) {
+    const last = v[v.length - 1]
+    if (engineIds.value.length !== 1 || engineIds.value[0] !== last) engineIds.value = [last]
+  }
 })
 const page = ref(1)
 const searching = ref(false)
@@ -40,20 +47,16 @@ const totalElapsed = computed(() => outcomes.value.reduce((a, b) => a + b.elapse
 const successCount = computed(() => outcomes.value.filter((o) => o.success).length)
 const totalItems = computed(() => outcomes.value.reduce((a, o) => a + o.items.length, 0))
 
+// 默认排序直接返回原数组；选择排序时才复制并按条目标题的大小/日期重排
 const filteredOutcomes = computed(() => {
-  let list = outcomes.value.map((o) => ({ ...o, items: o.items }))
-  if (sortBy.value !== 'default') {
-    list = list.map((o) => ({
-      ...o,
-      items: [...o.items].sort((a, b) => {
-        if (sortBy.value === 'size-desc') return parseSize(b.size) - parseSize(a.size)
-        if (sortBy.value === 'size-asc') return parseSize(a.size) - parseSize(b.size)
-        if (sortBy.value === 'date-desc') return parseDate(b.date) - parseDate(a.date)
-        return 0
-      }),
-    }))
-  }
-  return list
+  if (sortBy.value === 'default') return outcomes.value
+  const cmp =
+    sortBy.value === 'size-desc'
+      ? (a: MagnetItem, b: MagnetItem) => parseSize(b.size) - parseSize(a.size)
+      : sortBy.value === 'size-asc'
+        ? (a: MagnetItem, b: MagnetItem) => parseSize(a.size) - parseSize(b.size)
+        : (a: MagnetItem, b: MagnetItem) => parseDate(b.date) - parseDate(a.date)
+  return outcomes.value.map((o) => ({ ...o, items: [...o.items].sort(cmp) }))
 })
 
 function parseSize(s: string): number {
@@ -113,7 +116,10 @@ watch(
     if (k && k !== keyword.value) keyword.value = k
     const e = String(route.query.e ?? '')
     const ids = e.split(',').filter(Boolean)
-    engineIds.value = ids.length ? ids : ['all']
+    const next = ids.length ? ids : ['all']
+    if (engineIds.value.length !== next.length || engineIds.value.some((x, i) => x !== next[i])) {
+      engineIds.value = next
+    }
     if (k) void doSearch(k, 1)
   },
   { immediate: true },

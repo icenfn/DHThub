@@ -16,9 +16,7 @@ export const useSitesStore = defineStore('sites', {
 
   getters: {
     enabledSites: (s) => s.sites.filter((x) => x.enabled),
-    customSites: (s) => s.sites.filter((x) => x.is_custom),
     subscribedSites: (s) => s.sites.filter((x) => !x.is_custom),
-    defaultSiteId: (s): string | null => s.sites.find((x) => x.is_default)?.id ?? null,
   },
 
   actions: {

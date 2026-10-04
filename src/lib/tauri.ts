@@ -27,13 +27,3 @@ export async function invoke<T = unknown>(
   ])
 }
 
-export function platform(): string {
-  if (!isTauri) return 'browser'
-  // @ts-expect-error tauri 注入的运行时信息
-  const p = window.__TAURI_INTERNALS__?.metadata?.platform ?? 'unknown'
-  return p
-}
-
-export function isAndroid(): boolean {
-  return platform() === 'android'
-}

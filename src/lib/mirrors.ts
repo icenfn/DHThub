@@ -80,10 +80,3 @@ export async function speedTestMirror(mirror: GithubMirror): Promise<MirrorSpeed
 }
 
 /** 校验用户输入的自定义镜像前缀，返回规范化后的 base */
-export function normalizeMirrorBase(input: string): string {
-  const v = input.trim()
-  if (!/^https?:\/\/[^\s]+$/i.test(v)) {
-    throw new Error('镜像地址必须以 http(s):// 开头')
-  }
-  return v.endsWith('/') ? v : `${v}/`
-}

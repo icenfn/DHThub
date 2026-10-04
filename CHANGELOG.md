@@ -1,3 +1,8 @@
+## v0.4.3
+
+- 修复致命 bug：首页搜索后页面不跳转、整个软件卡死。根因是搜索结果页 `watch(engineIds)` 在值为 `['all']` 时反复赋新数组引用，触发 watch 无限自触发，阻塞渲染主线程；现增加值比较守卫，选中「全部」时不再产生新引用，同时路由参数恢复对 engineIds 的赋值也做了同样的防抖。
+- 优化代码逻辑、删除冗余：移除未使用的 `platform()`/`isAndroid()`（tauri.ts）、`customSites`/`defaultSiteId` getter（sites store）、`normalizeMirrorBase`（mirrors.ts）、`HistoryKind` 类型；搜索结果页默认排序不再复制数组（仅选择排序时才复制并重排）。
+
 # Changelog
 
 ## v0.4.2

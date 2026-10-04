@@ -64,8 +64,6 @@ export interface HistoryEntry {
   time: number
 }
 
-export type HistoryKind = 'magnet' | 'copy' | 'browse'
-
 /** GitHub 镜像配置：base 为前缀代理地址，空字符串 = 官方直连 */
 export interface GithubMirror {
   id: string
