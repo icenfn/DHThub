@@ -11,6 +11,8 @@
 - 安装 ponytail（懒人高级工程师 / 最小改动）规则到仓库（AGENTS.md、.claude/skills/ponytail、.cursor/rules、.github/copilot-instructions.md）。
 - 版本号 0.4.3 -> 0.5.0。
 
+- **构建目标调整**：Android 仅打包 arm64（移除 armv7）；Linux 改用 arm64 原生 runner 构建（不再打包 x86_64），产物为 `DHThub-<版本>-linux-arm64.deb` / `DHThub-<版本>-linux-aarch64.rpm`。
+
 ## v0.4.3
 
 - 修复致命 bug：首页搜索后页面不跳转、整个软件卡死。根因是搜索结果页 `watch(engineIds)` 在值为 `['all']` 时反复赋新数组引用，触发 watch 无限自触发，阻塞渲染主线程；现增加值比较守卫，选中「全部」时不再产生新引用，同时路由参数恢复对 engineIds 的赋值也做了同样的防抖。

@@ -1,7 +1,7 @@
 name: Build and Release
 
 # 手动触发：从 CHANGELOG.md 提取最新版本号与发布说明，自动构建
-# Linux(deb/rpm) / Windows(nsis) / Android(arm64+armv7) 并汇总发布（参考 delin_ocr 方案）
+# Linux(deb/rpm, arm64) / Windows(nsis) / Android(arm64) 并汇总发布（参考 delin_ocr 方案）
 on:
   workflow_dispatch:
 
@@ -50,7 +50,7 @@ jobs:
   build-linux:
     needs: prepare-release
     if: needs.prepare-release.outputs.should_release == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
@@ -73,17 +73,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Build Linux bundles (deb / rpm)
+      - name: Build Linux bundles (deb / rpm, arm64)
         run: npm run tauri build -- --bundles deb,rpm
 
-      - name: Rename artifacts
+      - name: Rename Linux artifacts (arm64)
         id: rename-linux
         run: |
           DEB=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
           RPM=$(find src-tauri/target/release/bundle/rpm -name "*.rpm" | head -1)
           mkdir -p release
-          mv "$DEB" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-amd64.deb"
-          mv "$RPM" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-x86_64.rpm"
+          mv "$DEB" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-arm64.deb"
+          mv "$RPM" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-aarch64.rpm"
           ls -la release
 
       - name: Upload Linux artifacts
@@ -143,10 +143,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rust toolchain + Android 交叉编译目标（仅 arm64 + armv7，不编译 x86）
+      - name: Rust toolchain + Android 交叉编译目标（仅 arm64，不编译 armv7 / x86）
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          targets: aarch64-linux-android
 
       - name: Node 22
         uses: actions/setup-node@v4
@@ -184,11 +184,11 @@ jobs:
       - name: 初始化 Android 工程
         run: npx tauri android init
 
-      - name: 仅保留 arm64 / armv7 ABI（apk 不编译 x86 / x86_64）
+      - name: 仅保留 arm64-v8a ABI（apk 不编译 armv7 / x86 / x86_64）
         run: |
           for f in src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties; do
             touch "$f"
-            printf '\n# DHThub: 只构建 arm64-v8a + armeabi-v7a\nabiList=arm64-v8a,armeabi-v7a\narchList=arm64,arm\ntargetList=aarch64,armv7\n' >> "$f"
+            printf '\n# DHThub: 只构建 arm64-v8a\nabiList=arm64-v8a\narchList=arm64\ntargetList=aarch64\n' >> "$f"
           done
           grep -hE '^(abiList|archList|targetList)=' src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties
 
@@ -336,18 +336,17 @@ jobs:
           print('gradle signing wired OK')
           PYEOF
 
-      - name: 构建 APK（split-per-abi，仅输出 arm64 / armv7 有效包）
+      - name: 构建 APK（split-per-abi，仅输出 arm64 有效包）
         run: npx tauri android build --apk --split-per-abi
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: 改名 arm64 / armv7 APK 并归拢（x86 空壳不发布）
+      - name: 仅保留 arm64 APK 并归拢（不再产出 armv7 / x86）
         run: |
           V=${{ needs.prepare-release.outputs.version }}
           cd src-tauri/gen/android/app/build/outputs/apk
           mkdir -p ../../../../../../../release
           cp arm64/release/app-arm64-release.apk ../../../../../../../release/DHThub-$V-android-arm64.apk
-          cp arm/release/app-arm-release.apk ../../../../../../../release/DHThub-$V-android-armv7.apk
           ls -la ../../../../../../../release
 
       - name: Upload Android APKs

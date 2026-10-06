@@ -28,7 +28,7 @@
 - **自动检测更新**：启动静默检查 GitHub Release，新版本弹窗 / snackbar 提醒，支持手动检查
 - **数据本地存储**：搜索历史（仅浏览记录）、站点与设置全部本地保存，支持设置备份 / 恢复与一键清理
 - **沉浸式交互**：MD3 风格界面，首页滑动窗口（搜索 / 搜索源 / 历史三页）+ 桌面端分段式 tab，搜索结果独立页支持多源合并、合并分页与一键复制磁力
-- **多端自动构建**：GitHub Actions 自动打包 Linux（deb / rpm）、Windows（NSIS）、Android（arm64 / armv7）
+- **多端自动构建**：GitHub Actions 自动打包 Linux（deb / rpm，arm64）、Windows（NSIS）、Android（arm64）
 
 ## 技术栈
 
