@@ -6,6 +6,8 @@ import '@mdi/font/css/materialdesignicons.css'
 // ============================================================
 // DHThub · Vuetify 4 + Material Design 3 主题
 // 完整 MD3 色彩 token（light / dark），品牌主色为青绿（Teal）
+// 设计取向：MD3 基调（tonal 分层、大圆角、pill 控件）+ 轻量描边卡片，
+// 不做教条化的 elevation 堆叠，强调留白与信息层级。
 // ============================================================
 
 const md3Light = {
@@ -158,18 +160,23 @@ export default createVuetify({
     },
   },
   defaults: {
-    // MD3：按钮采用药丸形，卡片 16px 大圆角，输入框统一描边样式
-    VBtn: { rounded: 'pill', variant: 'tonal', textTransform: 'none' },
-    VCard: { rounded: 'xl', elevation: 1 },
-    VTextField: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
-    VSelect: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
-    VTextarea: { variant: 'outlined', density: 'comfortable', rounded: 'lg' },
+    // MD3 基调：pill 按钮、大圆角卡片、描边输入控件；阴影交由 surface 分层承担
+    VBtn: { rounded: 'pill', variant: 'flat', textTransform: 'none' },
+    VCard: { rounded: 'xl', variant: 'flat' },
+    VSheet: { rounded: 'xl' },
+    VTextField: { variant: 'outlined', density: 'comfortable', rounded: 'lg', color: 'primary' },
+    VSelect: { variant: 'outlined', density: 'comfortable', rounded: 'lg', color: 'primary' },
+    VTextarea: { variant: 'outlined', density: 'comfortable', rounded: 'lg', color: 'primary' },
+    VAutocomplete: { variant: 'outlined', density: 'comfortable', rounded: 'lg', color: 'primary' },
     VSwitch: { color: 'primary' },
+    VCheckbox: { color: 'primary' },
     VList: { rounded: 'xl' },
-    VListItem: { rounded: 'xl' },
+    VListItem: { rounded: 'lg' },
     VChip: { rounded: 'pill' },
+    VAvatar: { rounded: 'lg' },
     VNavigationDrawer: { elevation: 0 },
     VAppBar: { elevation: 0 },
     VToolbar: { color: 'surface' },
+    VDialog: { scrim: true },
   },
 })

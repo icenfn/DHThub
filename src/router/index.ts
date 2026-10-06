@@ -5,7 +5,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
-      // 首页框架：应用栏（标题随 tab 变化 + 设置按钮）+ 滑动窗口内嵌 3 页（搜索/站点/历史）
+      // 首页框架：顶栏（标题随 tab 变化 + 设置入口）+ 滑动窗口内嵌 3 页（搜索/站点/历史）
       path: '/',
       component: AppLayout,
     },
@@ -13,8 +13,6 @@ const router = createRouter({
     { path: '/search', name: 'search', component: () => import('../views/SearchResultsView.vue'), meta: { title: '搜索结果' } },
     // 设置页独立框架
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: '设置' } },
-    // 关于页独立框架
-    { path: '/about', name: 'about', component: () => import('../views/AboutView.vue'), meta: { title: '关于' } },
   ],
 })
 
