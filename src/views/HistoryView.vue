@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 历史记录：浏览记录（本地存储），支持一键复制磁力 / 清空
 import { onMounted, ref } from 'vue'
 import { invoke } from '../lib/tauri'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
@@ -59,53 +60,109 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="px-3 px-sm-6 pt-2 pb-3 mx-auto" style="max-width: 1040px">
-    <div class="d-flex align-center mt-2 mb-4">
+  <div class="page-wrap">
+    <div class="page-head">
       <div>
-        <div class="text-h6 font-weight-bold">历史记录</div>
-        <div class="text-caption text-medium-emphasis">浏览记录，本地存储</div>
+        <h2 class="text-title-large font-weight-bold">历史记录</h2>
+        <p class="text-body-small text-medium-emphasis">浏览记录，本地存储</p>
       </div>
       <v-spacer />
-      <v-btn variant="tonal" color="error" prepend-icon="mdi-delete-sweep-outline" size="small" @click="clearAll">
+      <v-btn
+        variant="tonal"
+        color="error"
+        prepend-icon="mdi-delete-sweep-outline"
+        size="small"
+        rounded="pill"
+        @click="clearAll"
+      >
         清空浏览记录
       </v-btn>
     </div>
 
-    <v-card rounded="lg">
-      <v-progress-linear v-if="loading" indeterminate color="primary" />
-      <v-empty-state
-        v-if="!loading && list.length === 0"
-        icon="mdi-history"
-        title="暂无浏览记录"
-        text="点击搜索结果查看详情后，会自动记录在这里"
-      />
-      <v-list v-else lines="two">
-        <v-list-item v-for="(entry, i) in list" :key="i">
-          <template #prepend>
-            <v-avatar color="primary" variant="tonal" size="36">
-              <v-icon icon="mdi-eye-outline" size="18" />
-            </v-avatar>
-          </template>
-          <v-list-item-title class="text-body-2 font-weight-bold">{{ entry.keyword || '—' }}</v-list-item-title>
-          <v-list-item-subtitle class="text-caption">
-            <span class="font-family-monospace">{{ shortMagnet(entry.magnet) }}</span>
-            <span class="ml-2 text-medium-emphasis">{{ fmtTime(entry.time) }}</span>
-          </v-list-item-subtitle>
-          <template #append>
-            <v-btn
-              icon="mdi-content-copy"
-              size="small"
-              variant="text"
-              title="复制磁力"
-              @click="copyMagnet(entry)"
-            />
-          </template>
-        </v-list-item>
-      </v-list>
+    <v-progress-linear v-if="loading" indeterminate color="primary" rounded />
+
+    <v-sheet
+      v-if="!loading && list.length === 0"
+      rounded="xl"
+      color="surface-container-low"
+      border
+      class="pa-8 text-center"
+    >
+      <v-icon icon="mdi-history" size="48" color="outline" class="mb-2" />
+      <div class="text-title-medium font-weight-bold">暂无浏览记录</div>
+      <div class="text-body-small text-medium-emphasis">点击搜索结果查看详情后，会自动记录在这里</div>
+    </v-sheet>
+
+    <v-card v-else rounded="xl" variant="flat" color="surface-container-low" class="list-card">
+      <div
+        v-for="(entry, i) in list"
+        :key="i"
+        class="history-row"
+      >
+        <v-avatar color="primary-container" rounded="lg" size="40">
+          <v-icon icon="mdi-eye-outline" size="20" color="on-primary-container" />
+        </v-avatar>
+        <div class="history-row__body">
+          <div class="text-body-medium font-weight-bold text-truncate">{{ entry.keyword || '—' }}</div>
+          <div class="text-body-small text-medium-emphasis text-truncate">
+            <span class="mono">{{ shortMagnet(entry.magnet) }}</span>
+          </div>
+          <div class="text-label-small text-disabled">{{ fmtTime(entry.time) }}</div>
+        </div>
+        <v-btn
+          icon="mdi-content-copy"
+          size="small"
+          variant="text"
+          title="复制磁力"
+          rounded="lg"
+          @click="copyMagnet(entry)"
+        />
+      </div>
     </v-card>
 
-    <v-snackbar v-model="showToast" location="bottom" color="success" timeout="2000">
+    <v-snackbar v-model="showToast" location="bottom" color="inverse-surface" rounded="lg" timeout="2000">
       {{ toast }}
     </v-snackbar>
   </div>
 </template>
+
+<style scoped>
+.page-wrap {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 16px 20px 24px;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 8px;
+}
+
+.list-card {
+  overflow: hidden;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.history-row:last-child {
+  border-bottom: none;
+}
+
+.history-row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.72rem;
+}
+</style>

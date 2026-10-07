@@ -21,14 +21,14 @@
 
 ## 功能特性
 
-- **多源聚合搜索**：内置 9 个订阅源，一次搜索并发请求全部启用的站点，自动聚合去重展示
+- **多源聚合搜索**：内置 9 个订阅源，一次搜索并发请求所选站点，结果多源合并展示（全部 / 单选 / 多选），支持合并分页与排序
 - **订阅源管理**：仓库订阅源一键拉取（支持导入 / 导出 / 重置）、自定义站点、默认源、站点级开关，长按（右键）可修改 / 设为默认 / 删除
 - **自定义 DNS**：内置 AliDNS / DNSPod / Cloudflare / 114DNS 可选可测速，支持自定义添加，解决部分搜索源域名解析失败
 - **GitHub 镜像**：直连失败时可切换镜像源拉取订阅与检测更新，内置直连 + 4 个镜像，支持自定义与测速
 - **自动检测更新**：启动静默检查 GitHub Release，新版本弹窗 / snackbar 提醒，支持手动检查
 - **数据本地存储**：搜索历史（仅浏览记录）、站点与设置全部本地保存，支持设置备份 / 恢复与一键清理
-- **沉浸式交互**：首页滑动窗口（搜索 / 搜索源 / 历史三页），搜索结果独立页 + 搜索统计（逐站耗时 / 错误 / 一键复制）
-- **多端自动构建**：GitHub Actions 自动打包 Linux（deb / rpm）、Windows（NSIS）、Android（arm64 / armv7）
+- **沉浸式交互**：首页滑动窗口（搜索 / 搜索源 / 历史三页），搜索结果独立页（搜索框内嵌应用栏）支持多源合并、合并分页与一键复制磁力
+- **多端自动构建**：GitHub Actions 自动打包 Linux（deb / rpm，arm64）、Windows（NSIS）、Android（arm64）
 
 ## 技术栈
 
@@ -50,7 +50,7 @@
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
-| Android | `DHThub-vX.Y.Z-android-arm64.apk` / `android-armv7.apk` | 直接安装 |
+| Android | `DHThub-vX.Y.Z-android-arm64.apk` | 直接安装 |
 | Linux | `DHThub-vX.Y.Z-linux-amd64.deb` / `.rpm` | Debian / RHEL 系发行版 |
 | Windows | `DHThub-vX.Y.Z-windows-x64-setup.exe` | NSIS 安装包 |
 
@@ -73,7 +73,7 @@ npm run build
 npm run tauri build
 ```
 
-Android 打包（arm64 / armv7）由 CI 完成，本地参考 `.github/workflows/release.yml`。
+Android 打包（arm64）由 CI 完成，本地参考 `.github/workflows/release.yml`。
 
 ## 配置
 
@@ -100,7 +100,7 @@ DHThub/
 │   └── hotwords.json         # 热门推荐热词总表
 ├── src/                      # Vue3 前端
 │   ├── views/                # Home / SearchResults / Sites / History / Settings / About
-│   ├── components/           # AppLayout（滑动窗口框架）/ 磁力详情 / 搜索统计
+│   ├── components/           # AppLayout（滑动窗口框架）/ 磁力详情
 │   ├── stores/               # 站点状态（Pinia）+ 设置持久化
 │   └── lib/                  # tauri / http / update / mirrors / dns
 ├── src-tauri/
