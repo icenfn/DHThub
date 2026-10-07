@@ -24,13 +24,61 @@ const form = ref<SiteConfig>(emptyForm())
 const testingSite = ref(false)
 const siteTest = ref<{ ok: boolean; elapsed_ms: number; items: number; error: string | null; samples: string[] } | null>(null)
 
-// 每行右侧 v-btn 触发 v-menu（按钮锚定，不再使用长按 / 右键坐标菜单）
-const menuOpen = ref(false)
-const menuSite = ref<SiteConfig | null>(null)
+// 长按（手机）/ 右键（PC）上下文菜单 + 删除二次确认
+// 菜单使用触发点坐标定位（position-x/y），避免锚定元素导致菜单位置偏差
+const contextMenu = ref<{ show: boolean; site: SiteConfig | null }>({ show: false, site: null })
+const menuPos = ref<{ x: number; y: number } | null>(null)
 const deleteDialog = ref(false)
 const deletingSite = ref<SiteConfig | null>(null)
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
 
-const enabledCount = computed(() => sitesStore.sites.filter((s) => s.enabled).length)
+function openContextMenu(site: SiteConfig, e: { clientX: number; clientY: number }) {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+  menuPos.value = { x: e.clientX, y: e.clientY }
+  contextMenu.value = { show: true, site }
+}
+
+function onRowContextmenu(site: SiteConfig, e: MouseEvent) {
+  openContextMenu(site, e)
+}
+
+function onRowTouchstart(site: SiteConfig, e: TouchEvent) {
+  const t = e.touches[0]
+  if (!t) return
+  longPressTimer = setTimeout(() => openContextMenu(site, { clientX: t.clientX, clientY: t.clientY }), 500)
+}
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function editFromMenu() {
+  const site = contextMenu.value.site
+  contextMenu.value.show = false
+  if (site) openEdit(site)
+}
+
+function askDelete() {
+  const site = contextMenu.value.site
+  contextMenu.value.show = false
+  if (site) {
+    deletingSite.value = site
+    deleteDialog.value = true
+  }
+}
+
+async function confirmDelete() {
+  const site = deletingSite.value
+  deleteDialog.value = false
+  deletingSite.value = null
+  if (site) await removeSite(site)
+}
 
 function emptyForm(): SiteConfig {
   return {
@@ -130,6 +178,13 @@ async function toggleEnabled(site: SiteConfig, v: boolean) {
   })
 }
 
+async function setDefaultFromMenu() {
+  const site = contextMenu.value.site
+  if (!site) return
+  contextMenu.value.show = false
+  await setDefault(site)
+}
+
 async function setDefault(site: SiteConfig) {
   await run(async () => {
     await sitesStore.setDefault(site.is_default ? null : (site.id ?? null))
@@ -153,6 +208,19 @@ watch(deleteDialog, (v, _o, onCleanup) => {
 watch(addDialog, (v, _o, onCleanup) => {
   if (v) onCleanup(pushOverlay(() => { addDialog.value = false }))
 })
+watch(
+  () => contextMenu.value.show,
+  (v, _o, onCleanup) => {
+    if (v) {
+      onCleanup(
+        pushOverlay(() => {
+          contextMenu.value.show = false
+          contextMenu.value.site = null
+        }),
+      )
+    }
+  },
+)
 
 function openAdd() {
   editing.value = null
@@ -169,18 +237,6 @@ function openEdit(site: SiteConfig) {
   syncFormHelpers()
   siteTest.value = null
   addDialog.value = true
-}
-
-function askDelete(site: SiteConfig) {
-  deletingSite.value = site
-  deleteDialog.value = true
-}
-
-async function confirmDelete() {
-  const site = deletingSite.value
-  deleteDialog.value = false
-  deletingSite.value = null
-  if (site) await removeSite(site)
 }
 
 /** 测试连接：用「test」关键词请求一次并解析，展示耗时/条目/样例 */
@@ -210,7 +266,7 @@ async function saveSite() {
   })
 }
 
-// 导入导出
+// B8 导入导出
 async function doExport() {
   await run(async () => {
     const json = await sitesStore.exportJson()
@@ -260,6 +316,7 @@ async function reloadSites() {
   })
 }
 
+
 onMounted(async () => {
   await settings.ready()
   subscribeUrl.value = settings.get('subscribeUrl')
@@ -272,183 +329,130 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page-wrap">
-    <div class="page-head">
-      <div>
-        <h2 class="text-title-large font-weight-bold">搜索源</h2>
-        <p class="text-body-small text-medium-emphasis">
-          已启用 <strong>{{ enabledCount }}</strong> / {{ sitesStore.sites.length }} 个站点
-        </p>
-      </div>
-      <v-spacer />
-      <v-btn
-        color="secondary"
-        variant="tonal"
-        prepend-icon="mdi-cloud-download-outline"
-        size="small"
-        rounded="pill"
-        @click="subscribeDialog = true"
-      >
-        订阅源管理
-      </v-btn>
-    </div>
+  <div class="px-3 px-sm-6 pt-2 pb-3 mx-auto" style="max-width: 1040px">
 
-    <v-progress-linear v-if="sitesStore.loading" indeterminate color="primary" rounded />
-
-    <v-sheet
+    <!-- 站点列表：逐个 v-card（长按 / 右键菜单不变） -->
+    <v-progress-linear v-if="sitesStore.loading" indeterminate color="primary" />
+    <v-empty-state
       v-if="!sitesStore.loading && sitesStore.sites.length === 0"
-      rounded="xl"
-      color="surface-container-low"
-      border
-      class="pa-8 text-center"
-    >
-      <v-icon icon="mdi-antenna-off" size="48" color="outline" class="mb-2" />
-      <div class="text-title-medium font-weight-bold">还没有任何搜索源</div>
-      <div class="text-body-small text-medium-emphasis">
-        点击「订阅源管理」加载内置订阅源，或右下角「+」添加自定义站点
-      </div>
-    </v-sheet>
-
-    <div v-else class="site-list">
-      <v-card
-        v-for="site in sitesStore.sites"
-        :key="site.id"
-        rounded="xl"
-        variant="flat"
-        color="surface-container-low"
-        class="site-card"
-        :class="{ 'site-card--off': !site.enabled }"
-      >
-        <div class="site-card__row">
-          <v-switch
-            :model-value="site.enabled"
-            color="primary"
-            hide-details
-            density="compact"
-            class="site-switch"
-            @click.stop
-            @update:model-value="toggleEnabled(site, !!$event)"
-          />
-          <div class="site-card__meta">
-            <div class="text-body-medium font-weight-bold text-truncate">
-              {{ site.name }}
-              <v-chip v-if="site.is_custom" size="x-small" color="secondary" variant="tonal" class="ml-1">
-                自定义
-              </v-chip>
-              <v-chip v-if="site.is_default" size="x-small" color="warning" variant="flat" class="ml-1">
-                默认
-              </v-chip>
-            </div>
-            <div class="text-body-small text-medium-emphasis text-truncate">
-              {{ site.info || '—' }}
-              <span v-if="site.update_time" class="ml-1">更新：{{ site.update_time }}</span>
-            </div>
-          </div>
-
-          <!-- 右侧按钮：点击弹出菜单 -->
-          <v-menu v-model="menuOpen" :close-on-content-click="true" location="bottom end">
-            <template #activator="{ props: menuProps }">
-              <v-btn
-                v-bind="menuProps"
-                icon="mdi-dots-vertical"
-                size="small"
-                variant="text"
-                rounded="lg"
-                title="更多操作"
-                @click.stop="menuSite = site"
-              />
-            </template>
-            <v-list density="compact" nav rounded="lg">
-              <v-list-item
-                prepend-icon="mdi-pencil-outline"
-                title="修改"
-                @click="openEdit(site)"
-              />
-              <v-list-item
-                :prepend-icon="site.is_default ? 'mdi-star-off-outline' : 'mdi-star-outline'"
-                :title="site.is_default ? '取消默认搜索源' : '设为默认搜索源'"
-                @click="setDefault(site)"
-              />
-              <v-list-item
-                prepend-icon="mdi-delete-outline"
-                title="删除搜索源"
-                color="error"
-                @click="askDelete(site)"
-              />
-            </v-list>
-          </v-menu>
-        </div>
-      </v-card>
-    </div>
-
-    <!-- 悬浮按钮：自定义搜索源 -->
-    <v-fab
-      icon="mdi-plus"
-      color="primary"
-      size="60"
-      title="自定义搜索源"
-      class="fab fab--main"
-      @click="openAdd"
+      icon="mdi-antenna-off"
+      title="还没有任何搜索源"
+      text="点击右下角「订阅源管理」加载内置订阅源，或「自定义搜索源」添加站点"
     />
+    <v-card
+      v-for="site in sitesStore.sites"
+      :key="site.id"
+      rounded="lg"
+      class="mb-2"
+      @contextmenu.prevent="onRowContextmenu(site, $event)"
+      @touchstart="onRowTouchstart(site, $event)"
+      @touchend="cancelLongPress"
+      @touchmove="cancelLongPress"
+      @touchcancel="cancelLongPress"
+    >
+      <div class="d-flex align-center pa-2">
+        <v-switch
+          :model-value="site.enabled"
+          color="primary"
+          hide-details
+          density="compact"
+          class="mr-2"
+          @touchstart.stop
+          @click.stop
+          @update:model-value="toggleEnabled(site, !!$event)"
+        />
+        <div class="flex-grow-1 mr-2" style="min-width: 0">
+          <div class="text-body-2 font-weight-bold text-truncate">
+            {{ site.name }}
+            <v-chip v-if="site.is_custom" size="x-small" color="secondary" variant="tonal" class="ml-1">自定义</v-chip>
+            <v-chip v-if="site.is_default" size="x-small" color="warning" variant="flat" class="ml-1">默认</v-chip>
+          </div>
+          <div class="text-caption text-medium-emphasis text-truncate">
+            {{ site.info || '—' }}
+            <span v-if="site.update_time" class="ml-1">更新：{{ site.update_time }}</span>
+          </div>
+        </div>
+      </div>
+    </v-card>
 
     <!-- 订阅源管理弹窗 -->
-    <v-dialog v-model="subscribeDialog" max-width="560">
-      <v-card rounded="xl" variant="flat" color="surface-container-low">
-        <v-card-item class="pt-4">
-          <template #prepend>
-            <v-avatar color="secondary-container" rounded="lg">
-              <v-icon icon="mdi-cloud-download-outline" color="on-secondary-container" />
-            </v-avatar>
-          </template>
-          <v-card-title class="text-title-medium font-weight-bold">订阅源管理</v-card-title>
-          <v-card-subtitle class="text-body-small">从订阅仓库拉取站点配置</v-card-subtitle>
-        </v-card-item>
-
-        <v-card-text>
+    <v-dialog v-model="subscribeDialog" width="auto" max-width="560">
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">订阅源管理</v-card-title>
+        <v-divider />
+        <v-card-text style="min-width: min(80vw, 320px)">
           <v-text-field
             v-model="subscribeUrl"
             label="订阅仓库地址（GitHub Raw / JSON）"
             hide-details
             placeholder="https://raw.githubusercontent.com/icenfn/DHThub/main/sites/default.json"
-            density="comfortable"
+            density="compact"
             class="mb-3"
           />
           <div class="d-flex flex-wrap ga-2">
             <v-btn
               color="primary"
               variant="flat"
-              rounded="pill"
               :loading="subscribing"
               :disabled="busying"
               @click="doSubscribe"
             >
               <v-icon icon="mdi-cloud-download-outline" class="mr-1" />拉取订阅
             </v-btn>
-            <v-btn variant="tonal" color="secondary" rounded="pill" prepend-icon="mdi-import" :disabled="busying" @click="doImport">
-              导入
-            </v-btn>
-            <v-btn variant="tonal" color="secondary" rounded="pill" prepend-icon="mdi-export" :disabled="busying" @click="doExport">
-              导出
-            </v-btn>
-            <v-btn variant="text" color="error" rounded="pill" prepend-icon="mdi-restore" :disabled="busying" @click="doReset">
-              重置
-            </v-btn>
+            <v-btn variant="tonal" color="secondary" prepend-icon="mdi-import" :disabled="busying" @click="doImport">导入</v-btn>
+            <v-btn variant="tonal" color="secondary" prepend-icon="mdi-export" :disabled="busying" @click="doExport">导出</v-btn>
+            <v-btn variant="text" color="error" prepend-icon="mdi-restore" :disabled="busying" @click="doReset">重置</v-btn>
           </div>
-          <div v-if="sitesStore.subscribedAt" class="text-label-small text-medium-emphasis mt-3">
+          <div v-if="sitesStore.subscribedAt" class="text-caption text-medium-emphasis mt-3">
             上次更新：{{ sitesStore.subscribedAt }}
           </div>
         </v-card-text>
       </v-card>
     </v-dialog>
 
+    <!-- 悬浮按钮：自定义搜索源 / 订阅源管理 -->
+    <v-fab
+      icon="mdi-plus"
+      color="primary"
+      title="自定义搜索源"
+      style="position: fixed; right: 20px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 1200"
+      @click="openAdd"
+    />
+    <v-fab
+      icon="mdi-cloud-download-outline"
+      color="secondary"
+      title="订阅源管理"
+      style="position: fixed; right: 20px; bottom: calc(140px + env(safe-area-inset-bottom)); z-index: 1200"
+      @click="subscribeDialog = true"
+    />
+
+    <!-- 长按 / 右键上下文菜单 -->
+    <v-menu
+      v-model="contextMenu.show"
+      :position-x="menuPos?.x ?? 0"
+      :position-y="menuPos?.y ?? 0"
+      min-width="200"
+    >
+      <v-list density="compact" nav>
+        <v-list-item prepend-icon="mdi-pencil-outline" title="修改" @click="editFromMenu" />
+        <v-list-item
+          :prepend-icon="contextMenu.site?.is_default ? 'mdi-star-off-outline' : 'mdi-star-outline'"
+          :title="contextMenu.site?.is_default ? '取消默认搜索源' : '设为默认搜索源'"
+          @click="setDefaultFromMenu"
+        />
+        <v-list-item prepend-icon="mdi-delete-outline" title="删除搜索源" color="error" @click="askDelete" />
+      </v-list>
+    </v-menu>
+
     <!-- 删除二次确认 -->
     <v-dialog v-model="deleteDialog" max-width="360">
-      <v-card rounded="xl" variant="flat" color="surface-container-low">
-        <v-card-title class="text-title-medium font-weight-bold pa-4 pb-0">删除搜索源</v-card-title>
+      <v-card rounded="lg">
+        <v-card-title class="text-subtitle-1 font-weight-bold">删除搜索源</v-card-title>
+        <v-divider />
         <v-card-text class="pt-4">
           确定删除「{{ deletingSite?.name }}」吗？删除后需重新订阅或添加。
         </v-card-text>
-        <v-card-actions class="px-4 pb-3">
+        <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="deleteDialog = false">取消</v-btn>
           <v-btn color="error" variant="flat" @click="confirmDelete">删除</v-btn>
@@ -457,12 +461,13 @@ onMounted(async () => {
     </v-dialog>
 
     <!-- 自定义站点表单 -->
-    <v-dialog v-model="addDialog" max-width="660">
-      <v-card rounded="xl" variant="flat" color="surface-container-low">
-        <v-card-title class="text-title-medium font-weight-bold pa-4 pb-0">
+    <v-dialog v-model="addDialog" max-width="640">
+      <v-card>
+        <v-card-title class="text-subtitle-1 font-weight-bold">
           {{ editing?.is_custom ? '编辑自定义站点' : '添加自定义站点' }}
         </v-card-title>
-        <v-card-text style="max-height: 66vh; overflow-y: auto" class="pt-4">
+        <v-divider />
+        <v-card-text style="max-height: 66vh; overflow-y: auto">
           <v-text-field v-model="form.name" label="站点名称 *" hide-details class="mb-3" />
           <v-text-field v-model="form.info" label="站点说明" hide-details class="mb-3" />
           <div class="d-flex ga-2 mb-3">
@@ -471,7 +476,7 @@ onMounted(async () => {
               :items="['GET', 'POST']"
               label="请求方法"
               hide-details
-              style="max-width: 160px"
+              style="max-width: 140px"
             />
             <v-text-field v-model.number="form.request.timeout_ms" label="超时(ms)" type="number" hide-details />
           </div>
@@ -490,8 +495,8 @@ onMounted(async () => {
             rows="2"
             class="mb-3"
           />
-          <v-divider class="my-3" />
-          <div class="text-label-large text-medium-emphasis mb-2">解析规则（CSS 选择器）</div>
+          <v-divider class="my-2" />
+          <div class="text-subtitle-2 font-weight-bold mb-2">解析规则（CSS 选择器）</div>
           <v-text-field v-model="form.expression_model.group" label="结果条目容器 *（如 .search-item）" hide-details class="mb-3" />
           <v-text-field v-model="form.expression_model.title" label="标题选择器" hide-details class="mb-3" />
           <div class="d-flex ga-2 mb-3">
@@ -500,104 +505,43 @@ onMounted(async () => {
           </div>
           <div class="d-flex ga-2 mb-3">
             <v-text-field v-model="urlSel" label="链接选择器" hide-details />
-            <v-select v-model="urlAttr" :items="['href', 'value', 'data-clipboard-text']" label="链接属性" hide-details style="max-width: 210px" />
+            <v-select v-model="urlAttr" :items="['href', 'value', 'data-clipboard-text']" label="链接属性" hide-details style="max-width: 200px" />
           </div>
           <div class="d-flex ga-2">
             <v-text-field v-model="magnetSel" label="磁力选择器（留空则用链接）" hide-details />
-            <v-select v-model="magnetAttr" :items="['href', 'value', 'data-clipboard-text']" label="磁力属性" hide-details style="max-width: 210px" />
+            <v-select v-model="magnetAttr" :items="['href', 'value', 'data-clipboard-text']" label="磁力属性" hide-details style="max-width: 200px" />
           </div>
           <!-- 测试结果 -->
           <template v-if="siteTest">
-            <v-divider class="my-3" />
-            <div v-if="siteTest.ok" class="text-body-medium">
+            <v-divider class="my-2" />
+            <div v-if="siteTest.ok" class="text-body-2">
               <v-icon icon="mdi-check-circle" color="success" size="18" class="mr-1" />
               连接成功 · {{ siteTest.items }} 条结果 · {{ siteTest.elapsed_ms }}ms
-              <div v-if="siteTest.samples.length" class="text-body-small text-medium-emphasis mt-2">
+              <div v-if="siteTest.samples.length" class="text-caption text-medium-emphasis mt-1">
                 <v-chip v-for="t in siteTest.samples" :key="t" size="x-small" variant="tonal" class="mr-1 mb-1">{{ t }}</v-chip>
               </div>
             </div>
-            <div v-else class="text-body-medium text-error">
+            <div v-else class="text-body-2 text-error">
               <v-icon icon="mdi-close-circle" size="18" class="mr-1" />
               连接失败：{{ siteTest.error || '未知错误' }}
             </div>
           </template>
         </v-card-text>
-        <v-card-actions class="px-4 pb-3">
-          <v-btn variant="tonal" color="secondary" rounded="pill" prepend-icon="mdi-connection" :loading="testingSite" @click="testSite">
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="tonal" color="secondary" prepend-icon="mdi-connection" :loading="testingSite" @click="testSite">
             测试连接
           </v-btn>
-          <v-spacer />
           <v-btn variant="text" @click="addDialog = false">取消</v-btn>
-          <v-btn
-            color="primary"
-            variant="flat"
-            :disabled="!form.name || !form.request.search_url || !form.expression_model.group"
-            @click="saveSite"
-          >
+          <v-btn color="primary" variant="flat" :disabled="!form.name || !form.request.search_url || !form.expression_model.group" @click="saveSite">
             保存
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="showToast" location="bottom" color="inverse-surface" rounded="lg" timeout="2500">
+    <v-snackbar v-model="showToast" location="bottom" color="success" timeout="2500">
       {{ toast }}
     </v-snackbar>
   </div>
 </template>
-
-<style scoped>
-.page-wrap {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 16px 20px 96px;
-}
-
-.page-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.site-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.site-card {
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  transition: opacity 0.18s ease;
-}
-
-.site-card--off {
-  opacity: 0.62;
-}
-
-.site-card__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-}
-
-.site-switch {
-  flex-shrink: 0;
-}
-
-.site-card__meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.fab {
-  position: fixed;
-  right: 20px;
-  z-index: 1200;
-}
-
-.fab--main {
-  bottom: calc(88px + env(safe-area-inset-bottom));
-}
-</style>

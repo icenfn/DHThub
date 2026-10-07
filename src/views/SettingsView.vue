@@ -54,8 +54,6 @@ const speeds = ref<Record<string, MirrorSpeedResult>>({})
 const testing = ref(false)
 const testingIds = ref<Set<string>>(new Set())
 const addMirrorDialog = ref(false)
-const newMirrorBase = ref('')
-
 // 弹层栈注册：手机返回键 / PC ESC 关闭
 watch(addDnsDialog, (v, _o, onCleanup) => {
   if (v) onCleanup(pushOverlay(() => { addDnsDialog.value = false }))
@@ -63,6 +61,7 @@ watch(addDnsDialog, (v, _o, onCleanup) => {
 watch(addMirrorDialog, (v, _o, onCleanup) => {
   if (v) onCleanup(pushOverlay(() => { addMirrorDialog.value = false }))
 })
+const newMirrorBase = ref('')
 
 /** 镜像在列表中的展示文本：只显示链接；直连显示官方地址 */
 function mirrorLabel(m: GithubMirror): string {
@@ -214,6 +213,7 @@ async function runSpeedTest() {
     await Promise.all(
       mirrors.value.map(async (m) => {
         const r = await speedTestMirror(m)
+        // 单项完成立即更新对应行
         speeds.value = { ...speeds.value, [r.id]: r }
         const next = new Set(testingIds.value)
         next.delete(r.id)
@@ -293,6 +293,7 @@ async function doImportSettings() {
     if (!path) return
     const text = await readTextFile(path)
     const count = await settings.importJson(text)
+    // 重新同步页面状态
     themeMode.value = settings.get('theme')
     autoCheck.value = settings.get('autoCheckUpdate')
     await refreshDns()
@@ -316,22 +317,31 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="settings-page">
+  <div>
     <!-- 设置页独立框架：返回顶栏 + 内容 -->
-    <header class="settings-topbar">
-      <v-btn icon="mdi-arrow-left" variant="text" size="small" density="comfortable" title="返回" @click="$router.push('/')" />
-      <span class="text-title-medium font-weight-bold">设置</span>
-    </header>
+    <v-app-bar color="surface" border="b" height="52">
+      <template #prepend>
+        <v-btn icon="mdi-arrow-left" variant="text" title="返回" @click="$router.push('/')" />
+      </template>
+      <v-app-bar-title>
+        <span class="text-subtitle-1 font-weight-bold">设置</span>
+      </v-app-bar-title>
+    </v-app-bar>
 
-    <main class="settings-main">
-      <!-- 通用：外观 + 自动检测更新（信息密集型：单行并排） -->
-      <section class="settings-card">
-        <div class="settings-card__head">
-          <v-icon icon="mdi-cog-outline" size="18" color="primary" />
-          <span class="text-title-small font-weight-bold">通用</span>
-        </div>
-        <div class="settings-card__body">
-          <div class="dense-grid">
+    <v-main>
+      <div class="px-3 px-sm-6 py-3 mx-auto" style="max-width: 1040px">
+        <!-- 通用：外观 + 自动检测更新 -->
+        <v-card class="mb-3" rounded="lg">
+          <v-card-item>
+            <template #prepend>
+              <v-avatar color="primary-container" variant="flat" rounded="lg">
+                <v-icon icon="mdi-cog-outline" color="on-primary-container" />
+              </v-avatar>
+            </template>
+            <v-card-title class="text-subtitle-1 font-weight-bold">通用</v-card-title>
+          </v-card-item>
+          <v-card-text>
+            <div class="text-subtitle-2 font-weight-bold mb-1">外观</div>
             <v-select
               :model-value="themeMode"
               :items="[
@@ -342,112 +352,115 @@ onMounted(async () => {
               item-title="title"
               item-value="value"
               label="主题模式"
-              density="compact"
               variant="outlined"
+              density="compact"
               hide-details
+              class="mb-1"
               @update:model-value="saveTheme($event)"
             />
-            <div class="dense-row">
-              <div class="dense-row__label">
-                <span class="text-body-small font-weight-medium">自动检测更新</span>
-                <span class="text-label-small text-medium-emphasis">启动时静默检查 GitHub Release</span>
+            <v-divider class="my-2" />
+            <div class="d-flex align-center">
+              <div class="mr-auto">
+                <div class="text-subtitle-2 font-weight-bold">自动检测更新</div>
+                <div class="text-caption text-medium-emphasis">启动时静默检查 GitHub Release，发现新版本后通过提示条提醒</div>
               </div>
-              <v-switch
-                :model-value="autoCheck"
-                color="primary"
-                hide-details
-                density="compact"
-                class="flex-shrink-0"
-                @update:model-value="saveAutoCheck(!!$event)"
-              />
+              <v-switch :model-value="autoCheck" color="primary" hide-details @update:model-value="saveAutoCheck(!!$event)" />
             </div>
             <v-btn
               color="primary"
               variant="tonal"
               prepend-icon="mdi-update"
               size="small"
-              rounded="pill"
-              density="comfortable"
+              class="mt-3"
               :loading="updateChecking"
-              class="align-self-start"
               @click="checkUpdate"
             >
               立即检查更新
             </v-btn>
-          </div>
-        </div>
-      </section>
+          </v-card-text>
+        </v-card>
 
-      <!-- DNS 服务器（紧凑列表） -->
-      <section class="settings-card">
-        <div class="settings-card__head">
-          <v-icon icon="mdi-server-network" size="18" color="primary" />
-          <span class="text-title-small font-weight-bold">DNS 服务器</span>
-          <span class="text-label-small text-medium-emphasis flex-grow-1 text-truncate">
-            搜索请求域名解析 · 内置 AliDNS / DNSPod / Cloudflare / 114DNS
-          </span>
-          <v-btn
-            color="primary"
-            variant="tonal"
-            size="x-small"
-            rounded="pill"
-            prepend-icon="mdi-speedometer"
-            :loading="dnsTesting"
-            @click="runDnsSpeedTest"
-          >
-            全部测速
-          </v-btn>
-        </div>
-        <div class="settings-card__body pt-0">
-          <v-list density="compact" class="px-0 bg-transparent py-0">
+        <!-- DNS 服务器 -->
+        <v-card class="mb-3" rounded="lg">
+          <v-card-item>
+            <template #prepend>
+              <v-avatar color="tertiary-container" variant="flat" rounded="lg">
+                <v-icon icon="mdi-server-network" color="on-tertiary-container" />
+              </v-avatar>
+            </template>
+            <v-card-title class="text-subtitle-1 font-weight-bold">DNS 服务器</v-card-title>
+            <v-card-subtitle class="text-caption">搜索请求的域名解析；内置 AliDNS / DNSPod / Cloudflare / 114DNS，可选可测速</v-card-subtitle>
+            <template #append>
+              <v-btn
+                color="primary"
+                variant="tonal"
+                size="small"
+                prepend-icon="mdi-speedometer"
+                :loading="dnsTesting"
+                @click="runDnsSpeedTest"
+              >
+                全部测速
+              </v-btn>
+            </template>
+          </v-card-item>
+          <v-list density="compact" class="px-2 pb-2">
+            <!-- 系统默认：不启用自定义 DNS，走系统解析（默认选中） -->
             <v-list-item
               :active="selectedDnsId === ''"
-              rounded="lg"
-              density="compact"
+              rounded="xl"
+              class="mb-1"
               @click="selectDns({ id: '', name: '系统默认', base: '' })"
             >
               <template #prepend>
                 <v-icon
                   :icon="selectedDnsId === '' ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
                   :color="selectedDnsId === '' ? 'primary' : 'grey'"
-                  size="16"
+                  size="20"
                 />
               </template>
-              <v-list-item-title class="text-body-small">
+              <v-list-item-title class="text-body-2 font-weight-medium">
                 系统默认
                 <v-chip v-if="selectedDnsId === ''" size="x-small" color="primary" variant="tonal" class="ml-1">当前</v-chip>
               </v-list-item-title>
-              <v-list-item-subtitle class="text-label-small mono">使用系统 DNS</v-list-item-subtitle>
+              <v-list-item-subtitle class="text-caption font-family-monospace">使用系统 DNS</v-list-item-subtitle>
             </v-list-item>
             <v-list-item
               v-for="row in dnsRows"
               :key="row.id"
               :active="selectedDnsId === row.id"
-              rounded="lg"
-              density="compact"
+              rounded="xl"
+              class="mb-1"
               @click="selectDns(row)"
             >
               <template #prepend>
                 <v-icon
                   :icon="selectedDnsId === row.id ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
                   :color="selectedDnsId === row.id ? 'primary' : 'grey'"
-                  size="16"
+                  size="20"
                 />
               </template>
-              <v-list-item-title class="text-body-small">
+              <v-list-item-title class="text-body-2 font-weight-medium">
                 {{ row.name }}
                 <v-chip v-if="row.builtin" size="x-small" color="primary" variant="tonal" class="ml-1">内置</v-chip>
               </v-list-item-title>
-              <v-list-item-subtitle class="text-label-small mono">{{ row.base }}</v-list-item-subtitle>
+              <v-list-item-subtitle class="text-caption font-family-monospace">{{ row.base }}</v-list-item-subtitle>
               <template #append>
-                <div class="d-flex align-center ga-1">
-                  <v-progress-circular v-if="row.testing" indeterminate size="14" width="2" color="primary" />
+                <div class="d-flex align-center ga-2">
+                  <v-progress-circular
+                    v-if="row.testing"
+                    indeterminate
+                    size="18"
+                    width="2"
+                    color="primary"
+                    class="mr-1"
+                  />
                   <v-chip
                     v-else-if="row.speedChip"
                     size="x-small"
                     :color="row.speedChip.color"
                     :variant="row.speedChip.icon === 'mdi-close' ? 'tonal' : 'flat'"
                   >
+                    <v-icon :icon="row.speedChip.icon" size="13" class="mr-1" />
                     {{ row.speedChip.text }}
                   </v-chip>
                   <v-btn
@@ -457,67 +470,83 @@ onMounted(async () => {
                     variant="text"
                     color="error"
                     title="删除"
-                    density="comfortable"
                     @click.stop="removeDns(row)"
                   />
                 </div>
               </template>
             </v-list-item>
           </v-list>
-          <v-btn variant="text" color="secondary" size="x-small" rounded="pill" prepend-icon="mdi-plus" @click="openAddDns">
-            添加自定义 DNS
-          </v-btn>
-        </div>
-      </section>
+          <v-card-text class="pt-0">
+            <v-btn variant="text" color="secondary" size="small" prepend-icon="mdi-plus" @click="openAddDns">
+              添加自定义 DNS
+            </v-btn>
+            <div class="text-caption text-medium-emphasis mt-1">搜索请求经所选 DNS 解析；未配置时使用系统默认</div>
+          </v-card-text>
+        </v-card>
 
-      <!-- GitHub 镜像（紧凑列表） -->
-      <section class="settings-card">
-        <div class="settings-card__head">
-          <v-icon icon="mdi-cloud-sync-outline" size="18" color="primary" />
-          <span class="text-title-small font-weight-bold">GitHub 镜像</span>
-          <span class="text-label-small text-medium-emphasis flex-grow-1 text-truncate">拉取订阅与检测更新的加速通道</span>
-          <v-btn
-            color="primary"
-            variant="tonal"
-            size="x-small"
-            rounded="pill"
-            prepend-icon="mdi-speedometer"
-            :loading="testing"
-            @click="runSpeedTest"
-          >
-            全部测速
-          </v-btn>
-        </div>
-        <div class="settings-card__body pt-0">
-          <v-list density="compact" class="px-0 bg-transparent py-0">
+        <!-- GitHub 镜像 -->
+        <v-card class="mb-3" rounded="lg">
+          <v-card-item>
+            <template #prepend>
+              <v-avatar color="secondary-container" variant="flat" rounded="lg">
+                <v-icon icon="mdi-cloud-sync-outline" color="on-secondary-container" />
+              </v-avatar>
+            </template>
+            <v-card-title class="text-subtitle-1 font-weight-bold">GitHub 镜像</v-card-title>
+            <template #append>
+              <v-btn
+                color="primary"
+                variant="tonal"
+                size="small"
+                prepend-icon="mdi-speedometer"
+                :loading="testing"
+                @click="runSpeedTest"
+              >
+                全部测速
+              </v-btn>
+            </template>
+          </v-card-item>
+
+          <!-- 镜像列表：仅展示链接；直连行保留「直连」标签，其余不加标签 -->
+          <v-list density="compact" class="px-2 pb-2">
             <v-list-item
               v-for="row in mirrorRows"
               :key="row.id"
               :active="selectedMirrorId === row.id"
-              rounded="lg"
-              density="compact"
+              rounded="xl"
+              class="mb-1"
               @click="selectMirror(row)"
             >
               <template #prepend>
                 <v-icon
                   :icon="selectedMirrorId === row.id ? 'mdi-radiobox-marked' : 'mdi-radiobox-blank'"
                   :color="selectedMirrorId === row.id ? 'primary' : 'grey'"
-                  size="16"
+                  size="20"
                 />
               </template>
-              <v-list-item-title class="text-body-small mono">
+              <v-list-item-title class="text-body-2 font-weight-medium font-family-monospace">
                 {{ mirrorLabel(row) }}
-                <v-chip v-if="row.id === 'direct'" size="x-small" color="primary" variant="tonal" class="ml-1">直连</v-chip>
+                <v-chip v-if="row.id === 'direct'" size="x-small" color="primary" variant="tonal" class="ml-1">
+                  直连
+                </v-chip>
               </v-list-item-title>
               <template #append>
-                <div class="d-flex align-center ga-1">
-                  <v-progress-circular v-if="row.testing" indeterminate size="14" width="2" color="primary" />
+                <div class="d-flex align-center ga-2">
+                  <v-progress-circular
+                    v-if="row.testing"
+                    indeterminate
+                    size="18"
+                    width="2"
+                    color="primary"
+                    class="mr-1"
+                  />
                   <v-chip
                     v-else-if="row.speedChip"
                     size="x-small"
                     :color="row.speedChip.color"
                     :variant="row.speedChip.icon === 'mdi-close' ? 'tonal' : 'flat'"
                   >
+                    <v-icon :icon="row.speedChip.icon" size="13" class="mr-1" />
                     {{ row.speedChip.text }}
                   </v-chip>
                   <v-btn
@@ -527,201 +556,130 @@ onMounted(async () => {
                     variant="text"
                     color="error"
                     title="删除镜像"
-                    density="comfortable"
                     @click.stop="removeMirror(row)"
                   />
                 </div>
               </template>
             </v-list-item>
           </v-list>
-          <div class="d-flex align-center flex-wrap ga-2">
-            <v-btn variant="text" color="secondary" size="x-small" rounded="pill" prepend-icon="mdi-plus" @click="openAddMirror">
+
+          <v-card-text class="pt-0">
+            <v-btn variant="text" color="secondary" size="small" prepend-icon="mdi-plus" @click="openAddMirror">
               添加自定义镜像
             </v-btn>
-            <span class="text-label-small text-medium-emphasis">测速探针：{{ MIRROR_PROBE_URL }}</span>
-          </div>
-        </div>
-      </section>
+            <div class="text-caption text-medium-emphasis mt-1">测速探针：{{ MIRROR_PROBE_URL }}</div>
+          </v-card-text>
+        </v-card>
 
-      <!-- 数据管理（信息密集型：单行操作条） -->
-      <section class="settings-card">
-        <div class="settings-card__head">
-          <v-icon icon="mdi-database-cog-outline" size="18" color="primary" />
-          <span class="text-title-small font-weight-bold">数据管理</span>
-        </div>
-        <div class="settings-card__body">
-          <div class="dense-row">
-            <span class="text-label-medium text-medium-emphasis dense-row__label-text">备份 / 恢复</span>
-            <div class="d-flex flex-wrap ga-2">
-              <v-btn variant="tonal" color="primary" size="small" rounded="pill" density="comfortable" prepend-icon="mdi-export" @click="doExportSettings">
-                导出设置
+        <!-- 数据管理 -->
+        <v-card class="mb-3" rounded="lg">
+          <v-card-item>
+            <template #prepend>
+              <v-avatar color="error-container" variant="flat" rounded="lg">
+                <v-icon icon="mdi-database-cog-outline" color="on-error-container" />
+              </v-avatar>
+            </template>
+            <v-card-title class="text-subtitle-1 font-weight-bold">数据管理</v-card-title>
+          </v-card-item>
+          <v-card-text>
+            <div class="text-subtitle-2 font-weight-bold mb-1">设置备份 / 恢复</div>
+            <div class="d-flex flex-wrap ga-2 mb-4">
+              <v-btn variant="tonal" color="primary" prepend-icon="mdi-export" @click="doExportSettings">
+                导出设置（JSON）
               </v-btn>
-              <v-btn variant="tonal" color="primary" size="small" rounded="pill" density="comfortable" prepend-icon="mdi-import" :loading="importing" @click="doImportSettings">
+              <v-btn variant="tonal" color="primary" prepend-icon="mdi-import" :loading="importing" @click="doImportSettings">
                 导入设置
               </v-btn>
             </div>
-          </div>
-          <v-divider class="my-2" />
-          <div class="dense-row">
-            <span class="text-label-medium text-medium-emphasis dense-row__label-text">数据清理</span>
+            <v-divider class="mb-3" />
+            <div class="text-subtitle-2 font-weight-bold mb-1">数据清理</div>
             <div class="d-flex flex-wrap ga-2">
-              <v-btn variant="tonal" color="error" size="small" rounded="pill" density="comfortable" prepend-icon="mdi-delete-sweep-outline" :loading="clearing" @click="clearHistory">
-                清空全部历史
+              <v-btn variant="tonal" color="error" prepend-icon="mdi-delete-sweep-outline" :loading="clearing" @click="clearHistory">
+                清空全部历史记录
               </v-btn>
-              <v-btn variant="tonal" color="error" size="small" rounded="pill" density="comfortable" prepend-icon="mdi-history" @click="clearSearchHistory">
+              <v-btn variant="tonal" color="error" prepend-icon="mdi-history" @click="clearSearchHistory">
                 清空搜索历史
               </v-btn>
-              <v-btn
-                variant="tonal"
-                color="warning"
-                size="small"
-                rounded="pill"
-                density="comfortable"
-                prepend-icon="mdi-antenna-off"
-                @click="sitesStore.reset(); notice('站点已重置')"
-              >
+              <v-btn variant="tonal" color="warning" prepend-icon="mdi-antenna-off" @click="sitesStore.reset(); notice('站点已重置')">
                 重置站点订阅
               </v-btn>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 添加自定义 DNS 弹窗 -->
-      <v-dialog v-model="addDnsDialog" max-width="420">
-        <v-card rounded="xl" variant="flat" color="surface-container-low">
-          <v-card-title class="text-title-small font-weight-bold pa-4 pb-0">添加自定义 DNS</v-card-title>
-          <v-card-text class="pt-3">
-            <v-text-field
-              v-model="newDnsBase"
-              label="DNS 服务器地址 *（IP 或 IP:端口）"
-              density="compact"
-              hide-details
-              placeholder="223.6.6.6"
-            />
           </v-card-text>
-          <v-card-actions class="px-4 pb-3">
-            <v-spacer />
-            <v-btn variant="text" size="small" @click="addDnsDialog = false">取消</v-btn>
-            <v-btn color="primary" variant="flat" size="small" :disabled="!newDnsBase.trim()" @click="addDns">保存</v-btn>
-          </v-card-actions>
         </v-card>
-      </v-dialog>
 
-      <!-- 添加自定义镜像弹窗 -->
-      <v-dialog v-model="addMirrorDialog" max-width="480">
-        <v-card rounded="xl" variant="flat" color="surface-container-low">
-          <v-card-title class="text-title-small font-weight-bold pa-4 pb-0">添加自定义 GitHub 镜像</v-card-title>
-          <v-card-text class="pt-3">
-            <v-text-field
-              v-model="newMirrorBase"
-              label="镜像前缀地址 *（https:// 开头）"
-              density="compact"
-              hide-details
-              placeholder="https://ghproxy.net/"
-            />
-            <div class="text-label-small text-medium-emphasis mt-2">
-              前缀代理模式：请求 GitHub 原始地址时自动拼接该前缀，例如
-              <span class="mono">{{ newMirrorBase || 'https://镜像地址/' }}https://api.github.com/…</span>
-            </div>
-          </v-card-text>
-          <v-card-actions class="px-4 pb-3">
-            <v-spacer />
-            <v-btn variant="text" size="small" @click="addMirrorDialog = false">取消</v-btn>
-            <v-btn color="primary" variant="flat" size="small" :disabled="!newMirrorBase.trim()" @click="addMirror">保存</v-btn>
-          </v-card-actions>
+        <!-- 关于 -->
+        <v-card class="mb-3" rounded="lg" @click="$router.push('/about')">
+          <v-card-item>
+            <template #prepend>
+              <v-avatar color="success-container" variant="flat" rounded="lg">
+                <v-icon icon="mdi-information-outline" color="on-success-container" />
+              </v-avatar>
+            </template>
+            <v-card-title class="text-subtitle-1 font-weight-bold">关于</v-card-title>
+            <v-card-subtitle class="text-caption">版本信息与项目主页</v-card-subtitle>
+            <template #append>
+              <v-icon icon="mdi-chevron-right" color="grey" />
+            </template>
+          </v-card-item>
         </v-card>
-      </v-dialog>
 
-      <v-snackbar v-model="showToast" location="bottom" color="inverse-surface" rounded="lg" timeout="2200">
-        {{ toast }}
-      </v-snackbar>
-    </main>
+        <!-- 添加自定义 DNS 弹窗 -->
+        <v-dialog v-model="addDnsDialog" max-width="440">
+          <v-card rounded="lg">
+            <v-card-title class="text-subtitle-1 font-weight-bold">添加自定义 DNS</v-card-title>
+            <v-divider />
+            <v-card-text>
+              <v-text-field
+                v-model="newDnsBase"
+                label="DNS 服务器地址 *（IP 或 IP:端口）"
+                hide-details
+                placeholder="223.6.6.6"
+              />
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="addDnsDialog = false">取消</v-btn>
+              <v-btn color="primary" variant="flat" :disabled="!newDnsBase.trim()" @click="addDns">保存</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <!-- 添加自定义镜像弹窗（仅需填写链接，名称自动生成） -->
+        <v-dialog v-model="addMirrorDialog" max-width="480">
+          <v-card rounded="lg">
+            <v-card-title class="text-subtitle-1 font-weight-bold">添加自定义 GitHub 镜像</v-card-title>
+            <v-divider />
+            <v-card-text>
+              <v-text-field
+                v-model="newMirrorBase"
+                label="镜像前缀地址 *（https:// 开头）"
+                hide-details
+                placeholder="https://ghproxy.net/"
+              />
+              <div class="text-caption text-medium-emphasis mt-2">
+                前缀代理模式：请求 GitHub 原始地址时自动拼接该前缀，例如
+                <span class="font-family-monospace">{{ newMirrorBase || 'https://镜像地址/' }}https://api.github.com/…</span>
+              </div>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="addMirrorDialog = false">取消</v-btn>
+              <v-btn
+                color="primary"
+                variant="flat"
+                :disabled="!newMirrorBase.trim()"
+                @click="addMirror"
+              >
+                保存
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <v-snackbar v-model="showToast" location="bottom" color="success" timeout="2200">
+          {{ toast }}
+        </v-snackbar>
+      </div>
+    </v-main>
   </div>
 </template>
-
-<style scoped>
-.settings-page {
-  min-height: 100dvh;
-  background: rgb(var(--v-theme-surface));
-  display: flex;
-  flex-direction: column;
-}
-
-.settings-topbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: rgb(var(--v-theme-surface-container-low));
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-/* 信息密集型：更小间距、更宽内容区、多列布局 */
-.settings-main {
-  flex: 1;
-  width: 100%;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 10px 14px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.settings-card {
-  background: rgb(var(--v-theme-surface-container-low));
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.settings-card__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px 6px;
-}
-
-.settings-card__body {
-  padding: 8px 14px 12px;
-}
-
-/* 密集型网格：桌面两列，移动单列 */
-.dense-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-}
-@media (min-width: 600px) {
-  .dense-grid {
-    grid-template-columns: 1fr 1fr;
-    align-items: center;
-  }
-}
-
-.dense-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 36px;
-}
-
-.dense-row__label {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.dense-row__label-text {
-  flex-shrink: 0;
-  min-width: 72px;
-}
-
-.mono {
-  font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
-}
-</style>
