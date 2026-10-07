@@ -119,34 +119,28 @@ onMounted(async () => {
   <v-app>
     <router-view />
 
-    <!-- 发现新版本：MD3 风格弹窗 -->
+    <!-- 发现新版本：弹窗通知 -->
     <v-dialog v-model="updateDialog" max-width="420">
-      <v-card rounded="xl" variant="flat" class="pa-1">
-        <v-card-item>
-          <template #prepend>
-            <v-avatar color="primary-container" rounded="lg">
-              <v-icon icon="mdi-update" color="on-primary-container" />
-            </v-avatar>
-          </template>
-          <v-card-title class="text-title-medium font-weight-bold">发现新版本</v-card-title>
-          <v-card-subtitle class="text-body-small">更新已就绪，前往发布页获取</v-card-subtitle>
-        </v-card-item>
-        <v-card-text class="text-body-medium pt-0">{{ updateMsg }}</v-card-text>
-        <v-card-actions class="px-4 pb-3">
+      <v-card rounded="lg">
+        <v-card-title class="d-flex align-center ga-2">
+          <v-icon icon="mdi-update" color="primary" />
+          <span class="text-subtitle-1 font-weight-bold">发现新版本</span>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">{{ updateMsg }}</v-card-text>
+        <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="updateDialog = false">稍后</v-btn>
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-download" @click="openReleasePage">
-            前往下载
-          </v-btn>
+          <v-btn color="primary" variant="flat" @click="openReleasePage">前往下载</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- 无更新 / 检查失败：snackbar 轻提示 -->
-    <v-snackbar v-model="updateSnackbar" location="bottom" multi-line :timeout="2500" rounded="lg" color="inverse-surface">
+    <v-snackbar v-model="updateSnackbar" location="bottom" multi-line :timeout="2500" color="surface">
       <div class="d-flex align-center ga-2">
         <v-icon icon="mdi-check-circle" color="success" size="20" />
-        <span class="text-body-medium">{{ updateMsg }}</span>
+        <span class="text-body-2">{{ updateMsg }}</span>
       </div>
     </v-snackbar>
   </v-app>
@@ -165,21 +159,5 @@ textarea,
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
-}
-
-/* 滚动条：细、圆角、贴合 surface，弱化存在感 */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(127, 127, 127, 0.35);
-  border-radius: 999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(127, 127, 127, 0.55);
-  background-clip: content-box;
 }
 </style>
