@@ -1,0 +1,331 @@
+name: Build and Release
+
+# 手动触发：从 CHANGELOG.md 提取最新版本号与发布说明，自动构建
+# Linux(deb/rpm, arm64) / Windows(nsis) / Android(arm64) 并汇总发布（参考 delin_ocr 方案）
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract_version.outputs.version }}
+      body: ${{ steps.extract_version.outputs.body }}
+      should_release: ${{ steps.check_tag.outputs.exists == 'false' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取所有历史以便检查标签
+
+      - name: Extract latest version from CHANGELOG
+        id: extract_version
+        run: |
+          content=$(cat CHANGELOG.md)
+          version=$(echo "$content" | grep -m 1 '^## ' | sed 's/## //')
+          body=$(echo "$content" | awk -v version="$version" '
+            BEGIN { capture = 0 }
+            $0 ~ "^## " version { capture = 1; next }
+            capture == 1 && $0 ~ "^## " { exit }
+            capture == 1 { print }
+          ')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$body" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.extract_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-linux:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libxdo-dev libssl-dev build-essential curl wget file
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Linux bundles (deb / rpm, arm64)
+        run: npm run tauri build -- --bundles deb,rpm
+
+      - name: Rename Linux artifacts (arm64)
+        id: rename-linux
+        run: |
+          DEB=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
+          RPM=$(find src-tauri/target/release/bundle/rpm -name "*.rpm" | head -1)
+          mkdir -p release
+          mv "$DEB" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-arm64.deb"
+          mv "$RPM" "release/DHThub-${{ needs.prepare-release.outputs.version }}-linux-aarch64.rpm"
+          ls -la release
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: release
+          if-no-files-found: error
+
+  build-windows:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Windows installer (nsis)
+        run: npm run tauri build -- --bundles nsis
+
+      - name: Rename installer
+        id: rename-installer
+        shell: pwsh
+        run: |
+          $INSTALLER = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*.exe" | Select-Object -First 1
+          $NEW = "DHThub-${{ needs.prepare-release.outputs.version }}-windows-x64-setup.exe"
+          $NEW_PATH = Join-Path (Split-Path $INSTALLER) $NEW
+          Move-Item -Path $INSTALLER -Destination $NEW_PATH
+          echo "installer_path=$NEW_PATH" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: ${{ steps.rename-installer.outputs.installer_path }}
+          if-no-files-found: error
+
+  build-android:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      # secrets 不允许在 if: 中使用，先注入 job 级 env 供 if 判断
+      ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain + Android 交叉编译目标（仅 arm64，不编译 armv7 / x86）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK（runner 已预装，仅补平台/工具并接受许可）
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/cmdline-tools/16.0/bin:$PATH"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" >/dev/null 2>&1 || true
+          ls "${ANDROID_HOME}/platforms" 2>/dev/null || true
+
+      - name: Android NDK r26d
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          link-to-sdk: true
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: 初始化 Android 工程（工程已入库，仅在缺失时兜底生成）
+        run: |
+          if [ -d src-tauri/gen/android ]; then
+            echo "src-tauri/gen/android 已存在（沉浸式状态栏 / IME 桥接已入库），跳过 android init"
+          else
+            npx tauri android init
+          fi
+
+      - name: 仅保留 arm64-v8a ABI（apk 不编译 armv7 / x86 / x86_64）
+        run: |
+          for f in src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties; do
+            touch "$f"
+            printf '\n# DHThub: 只构建 arm64-v8a\nabiList=arm64-v8a\narchList=arm64\ntargetList=aarch64\n' >> "$f"
+          done
+          grep -hE '^(abiList|archList|targetList)=' src-tauri/gen/android/gradle.properties src-tauri/gen/android/app/gradle.properties
+
+      - name: 固定 versionCode / versionName（保证跨版本升级安装）
+        run: |
+          V="${{ needs.prepare-release.outputs.version }}"
+          CLEAN="${V#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CLEAN"
+          CODE=$(( (MAJOR * 10000) + (MINOR * 100) + PATCH ))
+          touch src-tauri/gen/android/app/tauri.properties
+          printf 'tauri.android.versionCode=%s\ntauri.android.versionName=%s\n' "$CODE" "$CLEAN" >> src-tauri/gen/android/app/tauri.properties
+          echo "versionCode=$CODE versionName=$CLEAN"
+          grep -E 'versionCode|versionName' src-tauri/gen/android/app/tauri.properties
+
+      - name: 覆盖 Android 图标为自定义图标（tauri init 使用模板默认图标，需用 icons/android 覆盖）
+        run: |
+          cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
+          echo "图标覆盖完成："
+          find src-tauri/gen/android/app/src/main/res/ -name "ic_launcher*" | sort
+
+      - name: 注入 APK 安装权限
+        run: |
+          python3 - <<'EOF'
+          import re
+          p = 'src-tauri/gen/android/app/src/main/AndroidManifest.xml'
+          with open(p, encoding='utf-8') as f:
+              c = f.read()
+          if 'REQUEST_INSTALL_PACKAGES' not in c:
+              c = c.replace(
+                  '<uses-permission android:name="android.permission.INTERNET"/>',
+                  '<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>',
+              )
+          with open(p, 'w', encoding='utf-8') as f:
+              f.write(c)
+          EOF
+
+      - name: 校验 MainActivity（沉浸式状态栏 + IME 桥接已随源码入库，禁止覆盖）
+        run: |
+          P=src-tauri/gen/android/app/src/main/java/com/dhthub/app/MainActivity.kt
+          test -f "$P" || { echo "MainActivity.kt 缺失"; exit 1; }
+          grep -q "setDecorFitsSystemWindows" "$P" || { echo "缺少 edge-to-edge 设置"; exit 1; }
+          grep -q "__dhthubApplyInsets" "$P" || { echo "缺少 IME / 安全区桥接"; exit 1; }
+          grep -q "isAppearanceLightStatusBars" "$P" || { echo "缺少状态栏图标明暗切换"; exit 1; }
+          echo "MainActivity 校验通过（沉浸式 + IME 避让）"
+
+      - name: 配置签名（有密钥用正式签名，否则生成 debug 签名保证 APK 可安装）
+        run: |
+          if [ -n "$ANDROID_KEY_BASE64" ]; then
+            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > src-tauri/gen/android/keystore.properties
+            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
+            echo "storeFile=$RUNNER_TEMP/release.keystore" >> src-tauri/gen/android/keystore.properties
+            echo "storePassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
+            base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/release.keystore
+          else
+            # 使用仓库内置的稳定 debug 签名（每次构建同一密钥，保证旧版本覆盖升级不报“软件包冲突”）
+            cp android/debug.keystore $RUNNER_TEMP/release.keystore
+            echo "keyAlias=androiddebugkey" > src-tauri/gen/android/keystore.properties
+            echo "keyPassword=android" >> src-tauri/gen/android/keystore.properties
+            echo "storeFile=$RUNNER_TEMP/release.keystore" >> src-tauri/gen/android/keystore.properties
+            echo "storePassword=android" >> src-tauri/gen/android/keystore.properties
+          fi
+
+      - name: Gradle 签名接线
+        run: |
+          python3 - <<'PYEOF'
+          p = 'src-tauri/gen/android/app/build.gradle.kts'
+          s = open(p, encoding='utf-8').read()
+          marker = '    buildTypes {'
+          signing_block = '    signingConfigs {\n' \
+              '        if (rootProject.file("keystore.properties").exists()) {\n' \
+              '            val keystoreProperties = Properties().apply {\n' \
+              '                load(rootProject.file("keystore.properties").inputStream())\n' \
+              '            }\n' \
+              '            create("release") {\n' \
+              '                storeFile = file(keystoreProperties.getProperty("storeFile"))\n' \
+              '                storePassword = keystoreProperties.getProperty("storePassword")\n' \
+              '                keyAlias = keystoreProperties.getProperty("keyAlias")\n' \
+              '                keyPassword = keystoreProperties.getProperty("keyPassword")\n' \
+              '            }\n' \
+              '        }\n' \
+              '    }\n' \
+              '    buildTypes {'
+          assert marker in s, 'marker buildTypes not found'
+          s = s.replace(marker, signing_block, 1)
+          rel = '        getByName("release") {'
+          assert rel in s, 'release buildType not found'
+          s = s.replace(rel, rel + '\n            signingConfig = signingConfigs.findByName("release")', 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          print('gradle signing wired OK')
+          PYEOF
+
+      - name: 构建 APK（split-per-abi，仅输出 arm64 有效包）
+        run: npx tauri android build --apk --split-per-abi
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+      - name: 仅保留 arm64 APK 并归拢（不再产出 armv7 / x86）
+        run: |
+          V=${{ needs.prepare-release.outputs.version }}
+          cd src-tauri/gen/android/app/build/outputs/apk
+          mkdir -p ../../../../../../../release
+          cp arm64/release/app-arm64-release.apk ../../../../../../../release/DHThub-$V-android-arm64.apk
+          ls -la ../../../../../../../release
+
+      - name: Upload Android APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: release
+          if-no-files-found: error
+
+  create-release:
+    needs: [prepare-release, build-linux, build-windows, build-android]
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.version }}
+          name: ${{ needs.prepare-release.outputs.version }}
+          body: ${{ needs.prepare-release.outputs.body }}
+          files: |
+            artifacts/linux-release/*
+            artifacts/windows-installer/*
+            artifacts/android-release/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

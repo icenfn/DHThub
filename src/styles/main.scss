@@ -1,0 +1,141 @@
+// ============================================================
+// DHThub · 全局设计系统
+// 目标内核：Android WebView 91+ / WebKitGTK / WebView2
+// 写法约束：不使用 @layer / :has() / 容器查询
+//
+// 颜色一律引用 Vuetify 注入的主题变量 `--v-theme-*`（RGB 三元组）。
+// 注意变量名必须是 kebab-case（见 plugins/vuetify.ts 顶部说明），
+// 否则会落回 Vuetify 默认调色板，出现浅色主题发灰 / 暗色主题发黑的
+// 对比度问题。
+// ============================================================
+
+html,
+body,
+#app {
+  height: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  font-family: 'Inter', 'Roboto', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system,
+    'Segoe UI', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ---------- 长按选择策略 ---------- */
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.mono,
+.selectable,
+.selectable *,
+input,
+textarea,
+[contenteditable='true'],
+[contenteditable=''],
+.v-field__input,
+.v-text-field input,
+.v-textarea textarea,
+.v-select input {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--v-theme-on-surface), 0.22);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--v-theme-on-surface), 0.38);
+}
+
+/* ---------- 字体基线 ---------- */
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- 图标对比度 ----------
+   不覆盖 .v-icon 的 color，交给 Vuetify 的 currentColor 继承机制：
+   父级文字色正确时图标自然正确。此处只保证未显式指定颜色时
+   图标不会继承到低对比的 placeholder 色。 */
+.v-icon {
+  opacity: 1;
+}
+
+/* ---------- 按钮基线 ---------- */
+.v-btn {
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.v-btn--icon {
+  border-radius: 50%;
+}
+
+/* ---------- 卡片：以描边 + 色阶分层，不用 elevation 阴影 ---------- */
+.v-card,
+.v-sheet {
+  box-shadow: none !important;
+}
+
+.v-card.v-card--border {
+  border-color: rgba(var(--v-theme-outline-variant), 1) !important;
+}
+
+/* ---------- 页面容器通用 ---------- */
+.page-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.page-inner {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px 16px calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+.section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.hairline {
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+/* ---------- 无障碍 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}
