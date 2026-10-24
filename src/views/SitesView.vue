@@ -771,25 +771,15 @@ onMounted(async () => {
 }
 
 /* 行内开关：压缩 v-switch 默认占位 */
+/* 开关：保持 MD3 标准观感（不再强行压扁成 20px 细条），
+   只把两侧的内边距收紧一点，比 MD3 默认略紧凑 */
 .row__switch {
   flex-shrink: 0;
-  margin: 0;
-}
-
-.row__switch :deep(.v-switch__track) {
-  height: 20px;
-  min-height: 20px;
-  width: 36px;
-  opacity: 1;
-}
-
-.row__switch :deep(.v-switch__thumb) {
-  height: 14px;
-  width: 14px;
+  margin: 0 -6px 0 0;
 }
 
 .row__switch :deep(.v-selection-control) {
-  min-height: 24px;
+  min-height: 40px;
 }
 
 
@@ -831,8 +821,8 @@ onMounted(async () => {
 .row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  gap: 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   transition: opacity 0.18s ease;
 }

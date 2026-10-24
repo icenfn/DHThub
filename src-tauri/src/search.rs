@@ -68,8 +68,16 @@ async fn search_one(
     match fetch_html(client, site, &url).await {
         Ok(html) => {
             let mut items = parse_html(&html, &site.expression_model);
-            // 某些站点（如 ØMagnet）列表页只给「短磁链」（https://0mag.me/!xxxxx），
-            // 真实 magnet:?xt=urn:btih: 只在详情页里：配置了 magnet_detail 就回源解析
+            // 站点常给相对路径（如磁力狗的 /information/xxx），前端拿到后既打不开也无法
+            // 回源解析：这里统一补全成绝对地址
+            let origin = site_origin(site);
+            if !origin.is_empty() {
+                for it in items.iter_mut() {
+                    it.url = normalize_detail_url(&it.url, &origin);
+                }
+            }
+            // 列表页本身没有磁力（如磁力狗、ØMagnet 只在详情页给），
+            // 配置了 magnet_detail 就回源详情页解析真实 magnet
             if site.expression_model.magnet_detail.is_some() {
                 resolve_detail_magnets(client, site, &mut items).await;
             }

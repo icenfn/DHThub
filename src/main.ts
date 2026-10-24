@@ -31,8 +31,11 @@ import App from './App.vue'
 import router from './router'
 import vuetify from './plugins/vuetify'
 import { installCascadeOrderCompat } from './compat/legacy-css'
+import { vViewer } from 'v-viewer'
 // 安全区 / 输入法内边距桥接：须在首帧前安装，避免启动瞬间内容被系统栏或键盘遮住
 import { installInsetsBridge } from './lib/insets'
+// 截图预览（v-viewer / viewerjs）样式：必须在全局样式之前引入
+import 'v-viewer/style.css'
 // 全局设计系统样式（须在 vuetify/styles 之后，才能覆盖其默认值）
 import './styles/main.scss'
 
@@ -47,4 +50,7 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(vuetify)
+// v-viewer：截图缩略图点击后由它接管为大图预览（缩放 / 拖动 / 左右切换）
+// 注意 vViewer 是「指令」而非插件，必须用 app.directive 注册
+app.directive('viewer', vViewer)
 app.mount('#app')

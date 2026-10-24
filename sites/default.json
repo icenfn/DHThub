@@ -121,6 +121,10 @@
       "magnet": {
         "sel": "a#down-url",
         "attr": "href"
+      },
+      "magnet_detail": {
+        "sel": "a#down-url",
+        "attr": "href"
       }
     }
   },

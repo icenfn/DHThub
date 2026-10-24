@@ -88,6 +88,30 @@ function addToSelection(id: string) {
   engineIds.value = cur.length ? cur : ['all']
 }
 
+/** v-chip-group 的变更入口：先比对出「本次切换的那个 chip」，再套用互斥规则。
+ *  - 切到「全部」：清空其它选中，只保留全部
+ *  - 切到其它源：取消「全部」；多选模式下在已选集合里增删，单选模式下独占
+ */
+function onGroupChange(next: string[] | undefined) {
+  const prev = engineIds.value
+  const arr = Array.isArray(next) ? next.filter(Boolean) : []
+  // 找出本次被切换（新增或移除）的源
+  const added = arr.find((id) => !prev.includes(id))
+  const removed = prev.find((id) => !arr.includes(id) && id !== 'all')
+  const toggled = added ?? removed ?? ''
+  if (!toggled) {
+    engineIds.value = prev
+    return
+  }
+  if (toggled === 'all') {
+    // 选「全部」即互斥：其它源的选中状态一律清掉
+    engineIds.value = ['all']
+    return
+  }
+  if (multiMode.value) toggleSelection(toggled)
+  else selectSingle(toggled)
+}
+
 // ---------- 长按 / 右键 ----------
 const LONG_PRESS_MS = 480
 let pressTimer: ReturnType<typeof setTimeout> | null = null
@@ -240,10 +264,22 @@ async function fetchSourcePage(k: string, p: number): Promise<MergedItem[]> {
     60000,
   )
   outcomes.value = result
+  // 轮询交错合并：按「第 1 条轮流、第 2 条轮流…」拼接各源结果，
+  // 否则按站点顺序整体追加，看起来像「某个站优先集中显示」。
+  const buckets = result.map((o) =>
+    o.items.map((it) => ({
+      ...it,
+      siteId: o.site_id,
+      siteName: o.site_name,
+      isDefault: !!o.is_default,
+    })),
+  )
   const merged: MergedItem[] = []
-  for (const o of result) {
-    for (const it of o.items) {
-      merged.push({ ...it, siteId: o.site_id, siteName: o.site_name, isDefault: !!o.is_default })
+  const maxLen = buckets.reduce((m, b) => Math.max(m, b.length), 0)
+  for (let i = 0; i < maxLen; i += 1) {
+    for (const b of buckets) {
+      const it = b[i]
+      if (it) merged.push(it)
     }
   }
   return merged
@@ -390,26 +426,6 @@ function openDetail(item: MergedItem) {
   })
 }
 
-const copiedTip = ref('')
-const copySnackbar = ref(false)
-
-async function copyQuick(item: MergedItem) {
-  const text = item.magnet || item.url
-  if (!text) return
-  try {
-    const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
-    await writeText(text)
-  } catch {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch {
-      return
-    }
-  }
-  copiedTip.value = '磁力链接已复制'
-  copySnackbar.value = true
-}
-
 // PC：把浏览器的右键菜单替换为「加入多选」，避免长按在桌面端不可用的体验差异
 const chipsRef = ref<HTMLElement | null>(null)
 useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
@@ -489,7 +505,7 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
         :column="false"
         class="sr-engines__track"
         selected-class="echip--on"
-        @update:model-value="(v: unknown) => (engineIds = (v as string[] | undefined)?.length ? (v as string[]) : ['all'])"
+        @update:model-value="(v: unknown) => onGroupChange(v as string[] | undefined)"
       >
         <v-chip
           v-for="opt in engineOptions"
@@ -608,13 +624,6 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
                 </div>
               </div>
 
-              <v-btn
-                icon="mdi-content-copy"
-                variant="text"
-                size="x-small"
-                title="复制磁力"
-                @click.stop="copyQuick(item)"
-              />
             </v-card>
           </div>
 
@@ -667,9 +676,6 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="copySnackbar" :timeout="1600" location="bottom">
-      {{ copiedTip }}
-    </v-snackbar>
   </div>
 </template>
 
