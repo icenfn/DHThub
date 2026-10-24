@@ -140,8 +140,10 @@ watch(
 .shell {
   display: flex;
   flex-direction: column;
+  /* 旧内核无 dvh：由 lib/viewport.ts 注入的 --app-height 提供确定高度，
+     否则 .shell 高度退化为 auto，底部 tab 栏被挤出视口 */
   height: 100%;
-  height: 100dvh;
+  height: var(--app-height, 100%);
   background: rgb(var(--v-theme-surface));
   overflow: hidden;
   transition: padding-bottom 0.18s ease;
@@ -205,6 +207,10 @@ watch(
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  /* 横向由 swiper 接管、纵向必须交还给页面：
+     否则内嵌页在触摸设备上无法上下滚动 */
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 /* 自定义元素默认 inline，height:100% 会被忽略 */
@@ -212,6 +218,7 @@ z-swiper,
 z-swiper-item {
   display: block;
   height: 100%;
+  min-height: 0;
 }
 
 /* ---------- 移动底部导航 ---------- */

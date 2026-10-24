@@ -169,6 +169,43 @@ async fn search_sites(
     Ok(search::search_multi(&client, sites, &keyword, page).await)
 }
 
+/// 流式搜索：立即返回参与搜索的站点数，各站点结果通过 search-site 事件陆续推送，
+/// 前端边收边渲染，不再等全部站点完成
+#[tauri::command]
+async fn search_stream(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    keyword: String,
+    site_ids: Option<Vec<String>>,
+    page: u32,
+    dns: String,
+    stream_id: String,
+) -> Result<usize, String> {
+    if keyword.trim().is_empty() {
+        return Err("搜索关键词不能为空".into());
+    }
+    let mut sites = state.sites.all_sites().await?;
+    sites.retain(|s| s.enabled);
+    if let Some(ids) = site_ids {
+        if !ids.is_empty() {
+            sites.retain(|s| ids.iter().any(|i| i == s.id.as_deref().unwrap_or("")));
+        }
+    }
+    if sites.is_empty() {
+        return Err("没有启用的搜索源，请先在「搜索源」页启用或订阅".into());
+    }
+    let page = page.max(1);
+    let client = match dns.trim() {
+        d if d.is_empty() => state.http.clone(),
+        d => dns::build_client(d)?,
+    };
+    let total = sites.len();
+    tauri::async_runtime::spawn(async move {
+        search::stream_multi(client, sites, keyword, page, stream_id, app).await;
+    });
+    Ok(total)
+}
+
 /// 退出应用（Android 返回键兜底：无弹窗且无历史时调用）
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
@@ -263,6 +300,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_vnidrop_share::init())
         .setup(|app| {
             let state = tauri::async_runtime::block_on(AppState::new(app.handle()));
             app.manage(state);
@@ -281,6 +319,7 @@ pub fn run() {
             import_sites,
             reset_sites,
             search_sites,
+            search_stream,
             test_site,
             exit_app,
             add_history,

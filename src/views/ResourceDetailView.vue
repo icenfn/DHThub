@@ -76,6 +76,32 @@ function isOkPayload(err: WlInfo['error']): boolean {
 
 const showShots = computed(() => loadingInfo.value || shots.value.length > 0)
 
+/** whatslink 返回的文件大小（字节 → 可读） */
+const parsedSize = computed(() => {
+  const n = Number(info.value?.size ?? 0)
+  if (!n || n <= 0) return ''
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let v = n
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i += 1
+  }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[i]}`
+})
+
+/** 有任一解析字段时才展示「解析信息」卡片 */
+const hasParsedInfo = computed(
+  () =>
+    !!info.value?.name ||
+    !!parsedSize.value ||
+    !!info.value?.count ||
+    shots.value.length > 0 ||
+    !!size.value ||
+    !!date.value ||
+    !!source.value,
+)
+
 function formatTime(sec?: number): string {
   if (!sec || sec < 0) return ''
   const s = Math.floor(sec)
@@ -199,6 +225,52 @@ async function openSource() {
   }
 }
 
+// ---------- 分享（@vnidrop/tauri-plugin-share） ----------
+// 分享内容：标题 + 磁力链接（或来源页地址）+ 大小/日期摘要
+const sharing = ref(false)
+
+function shareText(): string {
+  const lines: string[] = []
+  const t = (title.value || '未命名资源').trim()
+  lines.push(t)
+  if (size.value) lines.push(`大小：${size.value}`)
+  if (date.value) lines.push(`发布：${date.value}`)
+  if (magnet.value) lines.push(magnet.value)
+  else if (pageUrl.value) lines.push(pageUrl.value)
+  return lines.join('\n')
+}
+
+async function doShare() {
+  if (sharing.value) return
+  const text = shareText()
+  if (!text.trim()) return
+  sharing.value = true
+  try {
+    // 磁力链接不是 http(s) URL，只能作为文本分享
+    const payload = { title: title.value || 'DHThub 资源', text }
+    const mod = await import('@vnidrop/tauri-plugin-share')
+    if (await mod.canShare(payload)) {
+      await mod.share(payload)
+      return
+    }
+    // 不支持系统分享面板：退回 Web Share API / 剪贴板
+    const nav = navigator as Navigator & {
+      share?: (d: { title?: string; text?: string }) => Promise<void>
+    }
+    if (nav.share) {
+      await nav.share({ title: payload.title, text })
+      return
+    }
+    await copyText(text, '资源信息')
+  } catch (e) {
+    // 用户取消分享不提示
+    const msg = String(e ?? '')
+    if (!/cancel|abort|dismiss/i.test(msg)) flash('分享失败，请稍后重试')
+  } finally {
+    sharing.value = false
+  }
+}
+
 function back() {
   if (window.history.length > 1) router.back()
   else router.push('/')
@@ -228,6 +300,15 @@ onMounted(() => {
         <v-btn icon="mdi-arrow-left" variant="text" size="small" title="返回" @click="back" />
         <span class="rd-bar__title">资源详情</span>
         <v-spacer />
+        <v-btn
+          icon="mdi-share-variant-outline"
+          variant="text"
+          size="small"
+          title="分享"
+          aria-label="分享该资源"
+          :loading="sharing"
+          @click="doShare"
+        />
         <v-btn
           v-if="pageUrl"
           icon="mdi-open-in-new"
@@ -322,13 +403,6 @@ onMounted(() => {
             </button>
           </div>
 
-          <p class="rd-note">
-            截图由
-            <a href="https://whatslink.info/" target="_blank" rel="noopener noreferrer">
-              whatslink.info
-            </a>
-            解析提供，仅供参考
-          </p>
         </section>
 
         <!-- 磁力链接 -->
@@ -352,6 +426,49 @@ onMounted(() => {
             <code class="mono selectable">{{ magnet }}</code>
           </v-sheet>
         </section>
+
+        <!-- 解析信息：放在页面最底部，展示 whatslink 返回的结构化字段 -->
+        <section v-if="hasParsedInfo" class="rd-block rd-info">
+          <div class="rd-block__head">
+            <span class="section-label">
+              <v-icon icon="mdi-information-outline" size="15" class="mr-1" />解析信息
+            </span>
+            <v-chip v-if="fileTypeLabel" size="x-small" variant="tonal" color="primary">
+              {{ fileTypeLabel }}
+            </v-chip>
+          </div>
+
+          <dl class="rd-kv">
+            <div v-if="info?.name" class="rd-kv__row">
+              <dt>文件名</dt>
+              <dd class="selectable">{{ info.name }}</dd>
+            </div>
+            <div v-if="parsedSize" class="rd-kv__row">
+              <dt>文件大小</dt>
+              <dd>{{ parsedSize }}</dd>
+            </div>
+            <div v-if="info?.count" class="rd-kv__row">
+              <dt>文件数量</dt>
+              <dd>{{ info.count }}</dd>
+            </div>
+            <div v-if="shots.length" class="rd-kv__row">
+              <dt>截图数量</dt>
+              <dd>{{ shots.length }}</dd>
+            </div>
+            <div v-if="size" class="rd-kv__row">
+              <dt>列表标注</dt>
+              <dd>{{ size }}</dd>
+            </div>
+            <div v-if="date" class="rd-kv__row">
+              <dt>发布时间</dt>
+              <dd>{{ date }}</dd>
+            </div>
+            <div v-if="source" class="rd-kv__row">
+              <dt>来源站点</dt>
+              <dd>{{ source }}</dd>
+            </div>
+          </dl>
+        </section>
       </main>
     </div>
 
@@ -363,8 +480,9 @@ onMounted(() => {
 
 <style scoped>
 .rd {
+  /* 旧内核无 dvh，统一用 --app-height 兜底，避免高度退化为 auto 后无法滚动 */
   height: 100%;
-  height: 100dvh;
+  height: var(--app-height, 100%);
   background: rgb(var(--v-theme-surface));
   overflow: hidden;
 }
@@ -540,16 +658,42 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.rd-note {
+/* ---------- 解析信息 ---------- */
+.rd-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   margin: 0;
-  font-size: 0.68rem;
-  line-height: 1.6;
-  color: rgb(var(--v-theme-on-surface-variant));
-  opacity: 0.9;
 }
 
-.rd-note a {
-  color: rgb(var(--v-theme-primary));
-  text-decoration: none;
+.rd-kv__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.6));
+}
+
+.rd-kv__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.rd-kv dt {
+  flex: 0 0 auto;
+  min-width: 68px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.rd-kv dd {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: rgb(var(--v-theme-on-surface));
+  word-break: break-word;
 }
 </style>

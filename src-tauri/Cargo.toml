@@ -20,6 +20,7 @@ tauri-plugin-clipboard-manager = "2.4.1"
 tauri-plugin-opener = "2.7.0"
 tauri-plugin-http = "2.8.0"
 tauri-plugin-fs = "2.6.0"
+tauri-plugin-vnidrop-share = "1.0.0-rc.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots", "gzip", "brotli", "deflate", "stream"] }
@@ -27,7 +28,6 @@ hickory-resolver = "0.24"
 base64 = "0.22"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "fs"] }
 scraper = "0.27"
-futures = "0.3"
 urlencoding = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 

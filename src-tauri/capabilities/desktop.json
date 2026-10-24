@@ -18,6 +18,7 @@
     "dialog:allow-message",
     "clipboard-manager:allow-write-text",
     "opener:default",
+    "vnidrop-share:default",
     {
       "identifier": "http:default",
       "allow": [

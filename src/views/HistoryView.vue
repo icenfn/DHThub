@@ -14,6 +14,17 @@ const showToast = ref(false)
 
 const { copy } = useClipboard({ legacy: true })
 
+// 分批渲染：旧内核一次性挂载数百张卡片会直接白屏，
+// 这里每批 40 条，滚动到底部再追加
+const BATCH = 40
+const shown = ref(BATCH)
+const visible = computed(() => sorted.value.slice(0, shown.value))
+const hasMore = computed(() => shown.value < sorted.value.length)
+
+function loadMore() {
+  shown.value += BATCH
+}
+
 // 历史记录按时间倒序展示（Rust 端已排序，这里再兜底一次，防止存储顺序差异）
 const sorted = computed(() => [...list.value].sort((a, b) => b.time - a.time))
 
@@ -102,7 +113,7 @@ onMounted(load)
       <!-- 列表 -->
       <div v-else class="list">
         <v-card
-          v-for="(entry, i) in sorted"
+          v-for="(entry, i) in visible"
           :key="i"
           class="row"
           variant="outlined"
@@ -246,5 +257,12 @@ onMounted(load)
   font-size: 0.68rem;
   color: rgb(var(--v-theme-on-surface-variant));
   white-space: nowrap;
+}
+
+.morebtn {
+  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
 }
 </style>

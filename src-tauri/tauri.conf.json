@@ -43,17 +43,5 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  },
-  "plugins": {
-    "updater": {
-      "active": true,
-      "endpoints": [
-        "https://github.com/icenfn/DHThub/releases/latest/download/latest.json"
-      ],
-      "pubkey": "",
-      "windows": {
-        "installMode": "passive"
-      }
-    }
   }
 }

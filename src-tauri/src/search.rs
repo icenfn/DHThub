@@ -391,3 +391,58 @@ fn extract_field(doc: &Html, root: &ElementRef<'_>, spec: Option<&FieldSpec>) ->
         }
     }
 }
+
+/// 流式多站点搜索：每完成一个站点就向前端推送一次结果，
+/// 前端可立刻解析并渲染，不必等全部站点搜索完成后再统一显示。
+pub async fn stream_multi(
+    client: reqwest::Client,
+    sites: Vec<SiteConfig>,
+    keyword: String,
+    page: u32,
+    stream_id: String,
+    app: tauri::AppHandle,
+) {
+    use tauri::Emitter;
+    if sites.is_empty() {
+        let _ = app.emit(
+            "search-done",
+            serde_json::json!({ "streamId": stream_id, "total": 0 }),
+        );
+        return;
+    }
+    let total = sites.len();
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
+    let mut tasks = tokio::task::JoinSet::new();
+    for site in sites {
+        let client = client.clone();
+        let semaphore = semaphore.clone();
+        let keyword = keyword.clone();
+        tasks.spawn(async move {
+            let _permit = semaphore.acquire().await.ok();
+            search_one(&client, &site, &keyword, page).await
+        });
+    }
+    while let Some(res) = tasks.join_next().await {
+        let outcome = match res {
+            Ok(o) => o,
+            Err(e) => SiteOutcome {
+                site_id: String::new(),
+                site_name: "未知站点".into(),
+                success: false,
+                elapsed_ms: 0,
+                items: vec![],
+                error: Some(format!("任务异常: {e}")),
+                is_default: false,
+            },
+        };
+        // stream_id 每轮都要用，必须借用而不是移动
+        let _ = app.emit(
+            "search-site",
+            serde_json::json!({ "streamId": &stream_id, "outcome": outcome }),
+        );
+    }
+    let _ = app.emit(
+        "search-done",
+        serde_json::json!({ "streamId": stream_id, "total": total }),
+    );
+}

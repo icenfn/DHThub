@@ -895,25 +895,26 @@ onMounted(async () => {
   gap: 5px;
 }
 
-/* 行内开关：压缩 v-switch 默认占位 */
+/* 行内开关：遵循 MD3 尺寸（track 32dp / thumb 20dp），
+   仅收紧上下留白，比 MD3 略紧凑，但不压扁控件本体 */
 .row__switch {
   flex-shrink: 0;
   margin: 0;
 }
 
+.row__switch :deep(.v-selection-control) {
+  min-height: 40px;
+}
+
 .row__switch :deep(.v-switch__track) {
-  height: 20px;
-  min-height: 20px;
-  width: 36px;
+  height: 32px;
+  min-height: 32px;
+  width: 52px;
 }
 
 .row__switch :deep(.v-switch__thumb) {
-  height: 14px;
-  width: 14px;
-}
-
-.row__switch :deep(.v-selection-control) {
-  min-height: 24px;
+  height: 24px;
+  width: 24px;
 }
 
 /* ---------- 延迟标签 ---------- */

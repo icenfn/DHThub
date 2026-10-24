@@ -14,7 +14,7 @@
 import { computed, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebounceFn, useEventListener } from '@vueuse/core'
-import { invoke } from '../lib/tauri'
+import { invoke, isTauri } from '../lib/tauri'
 import { useSitesStore } from '../stores/sites'
 import { settings } from '../stores/settings'
 import type { MagnetItem, SiteOutcome } from '../types'
@@ -31,13 +31,13 @@ const searchedKeyword = ref('')
 // ---------- 搜索源（纯客户端过滤） ----------
 const engineIds = ref<string[]>(['all'])
 const engineOptions = computed(() => [
-  { id: 'all', name: '全部' },
+  { id: 'all', name: '聚合' },
   ...sitesStore.enabledSites.map((s) => ({ id: s.id ?? '', name: s.name })),
 ])
 
 const isAll = computed(() => engineIds.value.includes('all') || engineIds.value.length === 0)
 const modeLabel = computed(() => {
-  if (isAll.value) return '全部合并'
+  if (isAll.value) return '聚合合并'
   const n = engineIds.value.length
   return n === 1 ? '单源筛选' : `多源筛选 · ${n} 站`
 })
@@ -162,12 +162,20 @@ function onChipContextMenu(e: MouseEvent, id: string) {
 }
 
 // ---------- 搜索状态 ----------
+// 流式搜索：后端每完成一个站点就推送一次结果，前端立刻并入列表并渲染，
+// 不再等全部站点搜索完成后才一次性显示。
 const searching = ref(false)
 const errorMsg = ref('')
+const totalSites = ref(0)
+const finishedSites = ref(0)
 
 type MergedItem = MagnetItem & { siteId: string; siteName: string; isDefault: boolean }
+
+// 结果按「站点 × 页码」分桶；展示时轮询交错合并，
+// 聚合视图下各源结果穿插出现，而不是某个源成块挤在前面。
+const bucketOrder = ref<string[]>([])
+const bucketMap = ref<Record<string, MergedItem[]>>({})
 const outcomes = ref<SiteOutcome[]>([])
-const allItems = ref<MergedItem[]>([])
 const sourcesExhausted = ref(false)
 const sourcePage = ref(1)
 const MAX_SOURCE_PAGES = 50
@@ -175,6 +183,25 @@ const PAGE_SIZE = 20
 
 const successCount = computed(() => outcomes.value.filter((o) => o.success).length)
 const failedSites = computed(() => outcomes.value.filter((o) => !o.success))
+
+/** 轮询交错合并全部桶（同源同磁力/链接去重） */
+const allItems = computed<MergedItem[]>(() => {
+  const buckets = bucketOrder.value.map((k) => bucketMap.value[k] ?? [])
+  const out: MergedItem[] = []
+  const seen = new Set<string>()
+  const maxLen = buckets.reduce((m, b) => Math.max(m, b.length), 0)
+  for (let i = 0; i < maxLen; i += 1) {
+    for (const b of buckets) {
+      const it = b[i]
+      if (!it) continue
+      const key = `${it.siteId}|${it.magnet || it.url || it.title}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(it)
+    }
+  }
+  return out
+})
 
 /** 按当前 chip 选择过滤（不发请求） */
 const filteredItems = computed<MergedItem[]>(() => {
@@ -251,41 +278,78 @@ watch(
   },
 )
 
-/** 一次拉取「全部启用源」的某一页码结果 */
-async function fetchSourcePage(k: string, p: number): Promise<MergedItem[]> {
-  const result = await invoke<SiteOutcome[]>(
-    'search_sites',
-    {
-      keyword: k,
-      siteIds: undefined, // 始终搜索全部启用源，chip 只做本地过滤
-      page: p,
-      dns: settings.getSelectedDns()?.base ?? '',
-    },
-    60000,
-  )
-  outcomes.value = result
-  // 轮询交错合并：按「第 1 条轮流、第 2 条轮流…」拼接各源结果，
-  // 否则按站点顺序整体追加，看起来像「某个站优先集中显示」。
-  const buckets = result.map((o) =>
-    o.items.map((it) => ({
+/** 把一个站点的结果放进对应桶，并更新统计 */
+function applyOutcome(o: SiteOutcome, pageNo: number) {
+  const key = `${o.site_id || o.site_name}#${pageNo}`
+  if (!bucketOrder.value.includes(key)) {
+    bucketOrder.value = [...bucketOrder.value, key]
+  }
+  bucketMap.value = {
+    ...bucketMap.value,
+    [key]: o.items.map((it) => ({
       ...it,
       siteId: o.site_id,
       siteName: o.site_name,
       isDefault: !!o.is_default,
     })),
-  )
-  const merged: MergedItem[] = []
-  const maxLen = buckets.reduce((m, b) => Math.max(m, b.length), 0)
-  for (let i = 0; i < maxLen; i += 1) {
-    for (const b of buckets) {
-      const it = b[i]
-      if (it) merged.push(it)
-    }
   }
-  return merged
+  const rest = outcomes.value.filter((x) => x.site_id !== o.site_id)
+  outcomes.value = [...rest, o]
 }
 
-/** 全新搜索：只请求一次（第 1 个源页码） */
+let streamSeq = 0
+
+/** 流式搜索某一页：先挂事件，再触发后端；每个站点返回即并入列表 */
+async function runStreamPage(k: string, pageNo: number): Promise<void> {
+  const dns = settings.getSelectedDns()?.base ?? ''
+  if (!isTauri) {
+    // 浏览器预览没有事件通道，退化为一次性请求
+    const result = await invoke<SiteOutcome[]>(
+      'search_sites',
+      { keyword: k, siteIds: undefined, page: pageNo, dns },
+      60000,
+    )
+    result.forEach((o) => applyOutcome(o, pageNo))
+    return
+  }
+  const { listen } = await import('@tauri-apps/api/event')
+  const streamId = `${Date.now()}-${++streamSeq}-p${pageNo}`
+  let resolveDone: (() => void) | null = null
+  const done = new Promise<void>((r) => {
+    resolveDone = r
+  })
+  // 必须先注册监听，再调用命令，否则首批站点事件会丢失
+  const offSite = await listen<{ streamId: string; outcome: SiteOutcome }>(
+    'search-site',
+    (ev) => {
+      if (ev.payload.streamId !== streamId) return
+      finishedSites.value += 1
+      applyOutcome(ev.payload.outcome, pageNo)
+    },
+  )
+  const offDone = await listen<{ streamId: string }>('search-done', (ev) => {
+    if (ev.payload.streamId === streamId) resolveDone?.()
+  })
+  try {
+    totalSites.value = await invoke<number>(
+      'search_stream',
+      { keyword: k, siteIds: undefined, page: pageNo, dns, streamId },
+      30000,
+    )
+    // 兜底超时：极少数站点既不返回也不报错时，不让页面无限等
+    await Promise.race([
+      done,
+      new Promise<void>((r) => {
+        setTimeout(r, 70000)
+      }),
+    ])
+  } finally {
+    offSite()
+    offDone()
+  }
+}
+
+/** 全新搜索：清空后流式拉取第 1 页 */
 async function doSearch(kw = keyword.value) {
   const k = kw.trim()
   if (!k) return
@@ -294,22 +358,22 @@ async function doSearch(kw = keyword.value) {
   searching.value = true
   errorMsg.value = ''
   outcomes.value = []
-  allItems.value = []
+  bucketOrder.value = []
+  bucketMap.value = {}
+  finishedSites.value = 0
+  totalSites.value = 0
   sourcesExhausted.value = false
   sourcePage.value = 1
   page.value = 1
   try {
-    const merged = await fetchSourcePage(k, 1)
-    allItems.value = merged
-    if (merged.length === 0) {
+    await runStreamPage(k, 1)
+    if (allItems.value.length === 0) {
       errorMsg.value = failedSites.value.length
         ? '搜索源均未返回结果，请检查网络或在「搜索源」中更换站点'
         : '没有返回结果，请尝试更换关键词'
     }
   } catch (e) {
     errorMsg.value = String(e)
-    outcomes.value = []
-    allItems.value = []
   } finally {
     searching.value = false
   }
@@ -318,29 +382,21 @@ async function doSearch(kw = keyword.value) {
 /** 翻页时按需补齐数据（同源按磁力 / 链接去重） */
 async function ensureLoaded(targetPage: number): Promise<boolean> {
   if (sourcesExhausted.value) return false
-  if (targetPage * PAGE_SIZE <= sortedItems.value.length) return false
+  if (targetPage * PAGE_SIZE <= allItems.value.length) return false
   if (sourcePage.value >= MAX_SOURCE_PAGES) {
     sourcesExhausted.value = true
     return false
   }
+  const before = allItems.value.length
+  const next = sourcePage.value + 1
   try {
-    const next = sourcePage.value + 1
-    const merged = await fetchSourcePage(searchedKeyword.value, next)
+    await runStreamPage(searchedKeyword.value, next)
     sourcePage.value = next
-    if (merged.length === 0) {
+    if (allItems.value.length === before) {
       sourcesExhausted.value = true
       return false
     }
-    const seen = new Set(allItems.value.map((i) => `${i.siteId}|${i.magnet || i.url}`))
-    const fresh = merged.filter((i) => {
-      const key = `${i.siteId}|${i.magnet || i.url}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-    allItems.value = [...allItems.value, ...fresh]
-    if (fresh.length === 0) sourcesExhausted.value = true
-    return fresh.length > 0
+    return true
   } catch {
     sourcesExhausted.value = true
     return false
@@ -448,7 +504,6 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
         flat
         hide-details
         single-line
-        :prepend-inner-icon="'mdi-magnify'"
         clearable
         enterkeyhint="search"
         @keyup.enter="submit"
@@ -457,14 +512,16 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
         class="sr-go"
         color="primary"
         variant="flat"
-        icon
-        rounded="circle"
+        rounded="pill"
         :disabled="!keyword.trim() || searching"
         title="搜索"
         @click="submit"
       >
         <v-progress-circular v-if="searching" indeterminate size="16" width="2" color="on-primary" />
-        <v-icon v-else icon="mdi-magnify" size="19" />
+        <template v-else>
+          <v-icon icon="mdi-magnify" size="18" start />
+          搜索
+        </template>
       </v-btn>
     </v-toolbar>
 
@@ -473,7 +530,7 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
       <v-icon icon="mdi-checkbox-multiple-marked-outline" size="15" color="primary" />
       <span class="multi-bar__text">
         多选筛选 · 已选
-        <strong>{{ engineIds.includes('all') ? '全部' : engineIds.length + ' 个来源' }}</strong>
+        <strong>{{ engineIds.includes('all') ? '聚合' : engineIds.length + ' 个来源' }}</strong>
       </span>
       <v-btn
         size="x-small"
@@ -570,7 +627,9 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
 
         <div v-if="searching" class="loading">
           <v-progress-linear indeterminate color="primary" rounded height="3" />
-          <div class="loading__text">正在并发请求各搜索源…</div>
+          <div class="loading__text">
+            {{ finishedSites }}/{{ totalSites || '?' }} 站已返回，结果实时显示
+          </div>
         </div>
 
         <v-empty-state
@@ -683,8 +742,9 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
 .sr {
   display: flex;
   flex-direction: column;
+  /* 旧内核不支持 dvh：用 --app-height 兜底，否则高度退化为 auto 后无法滚动 */
   height: 100%;
-  height: 100dvh;
+  height: var(--app-height, 100%);
   background: rgb(var(--v-theme-surface));
   overflow: hidden;
 }
@@ -725,7 +785,14 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
 }
 
 .sr-go {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  height: 40px !important;
+  min-width: 84px;
+  padding: 0 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  font-size: 0.82rem;
 }
 
 /* ---------- 搜索源 chip ---------- */
