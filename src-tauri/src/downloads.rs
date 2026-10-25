@@ -6,9 +6,10 @@
 //! - DHT 持久化文件路径必须显式指定到应用数据目录：librqbit 默认走
 //!   `directories` crate 解析项目目录（com.rqbit.dht），在 Android 上无法解析，
 //!   会导致「error initializing persistent DHT: cannot determine project directory」；
-//! - 内核配置（DHT/限速/端口/追踪器等）由前端设置页下发，修改后可重启会话生效；
-//! - 统计信息直接把 librqbit 的 `TorrentStats`（实现了 Serialize）转成 JSON 透出，
-//!   前端按需取字段，避免在后端重复建模导致上游字段改动即编译失败。
+//! - 内核配置（DHT / UPnP / uTP / 限速 / 追踪器）由前端设置页下发，
+//!   修改后自动重启会话即可生效；
+//! - 添加磁力分两步：先 `list_only` 探测种子内文件清单，由用户勾选后再真正开始下载；
+//! - 统计信息直接把 librqbit 的 `TorrentStats`（实现了 Serialize）转成 JSON 透出。
 
 use std::collections::HashSet;
 use std::num::NonZeroU32;
@@ -19,34 +20,63 @@ use librqbit::api::TorrentIdOrHash;
 use librqbit::dht::DhtPersistenceConfig;
 use librqbit::limits::LimitsConfig;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, DhtSessionConfig, ManagedTorrent, Session,
-    SessionOptions,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, DhtSessionConfig, ListenerMode,
+    ListenerOptions, ManagedTorrent, Session, SessionOptions,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-/// 下载内核配置（由前端设置页下发；数值为 0 / 空 = 使用内核默认或不限速）
-#[derive(Debug, Clone, Default, Deserialize)]
+/// 下载内核配置（由前端设置页下发；限速为 0 表示不限速）
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct DownloadConfig {
     /// 启用 DHT（分布式哈希表，无 tracker 时找 peer）
     pub dht_enabled: bool,
-    /// DHT 监听端口，0 = 随机
-    pub dht_port: u32,
+    /// 启用 UPnP 端口映射
+    pub upnp_enabled: bool,
+    /// 启用 uTP（基于 UDP 的传输）
+    pub utp_enabled: bool,
     /// 下载限速 KB/s，0 = 不限
     pub download_limit_kbps: u32,
     /// 上传限速 KB/s，0 = 不限
     pub upload_limit_kbps: u32,
-    /// 每个任务的 peer 上限，0 = 内核默认
-    pub peer_limit: u32,
-    /// 并发初始化任务数，0 = 内核默认
-    pub concurrent_init_limit: u32,
-    /// 禁用 tracker 通信（纯 DHT 模式）
-    pub disable_trackers: bool,
-    /// 仅使用 IPv4
-    pub ipv4_only: bool,
     /// 追加到每个任务的 tracker 列表
     pub extra_trackers: Vec<String>,
+}
+
+impl Default for DownloadConfig {
+    fn default() -> Self {
+        Self {
+            dht_enabled: true,
+            upnp_enabled: true,
+            utp_enabled: true,
+            download_limit_kbps: 0,
+            upload_limit_kbps: 0,
+            extra_trackers: Vec::new(),
+        }
+    }
+}
+
+/// 种子内的单个文件（供「下载前选择文件」弹窗使用）
+#[derive(Serialize)]
+pub struct TorrentFile {
+    /// 文件序号，添加任务时用于 only_files
+    pub id: usize,
+    /// 种子内的相对路径
+    pub name: String,
+    /// 字节数
+    pub length: u64,
+}
+
+/// 磁力探测结果
+#[derive(Serialize)]
+pub struct ProbeResult {
+    pub info_hash: String,
+    /// 种子名称
+    pub name: String,
+    /// 总字节数
+    pub total_length: u64,
+    pub files: Vec<TorrentFile>,
 }
 
 /// 一条下载任务的对外视图
@@ -69,7 +99,7 @@ pub struct DownloadManager {
     session: Mutex<Option<Arc<Session>>>,
 }
 
-/// KB/s → 字节/秒（0 视为不限速）
+/// KB/s → 字节/秒（0 = 不限速）
 fn kbps_to_bps(kbps: u32) -> Option<NonZeroU32> {
     if kbps == 0 {
         None
@@ -88,7 +118,7 @@ impl DownloadManager {
         }
     }
 
-    /// 更新内核配置；返回 true 表示会话已初始化，需要重启会话才能生效
+    /// 更新内核配置；返回 true 表示会话已在运行，调用方应立即重启会话
     pub async fn configure(&self, cfg: DownloadConfig) -> bool {
         *self.config.lock().await = cfg;
         self.session.lock().await.is_some()
@@ -109,7 +139,6 @@ impl DownloadManager {
         // 避免 directories crate 在 Android 上解析项目目录失败
         let dht = if cfg.dht_enabled {
             Some(DhtSessionConfig {
-                port: u16::try_from(cfg.dht_port).ok().filter(|p| *p > 0),
                 persistence: Some(DhtPersistenceConfig {
                     config_filename: Some(self.state_dir.join("dht-state.json")),
                     ..Default::default()
@@ -120,6 +149,18 @@ impl DownloadManager {
             None
         };
 
+        // 监听选项：uTP 开关直接决定监听模式；UPnP 由内核向路由器申请端口映射
+        let listen = ListenerOptions {
+            mode: if cfg.utp_enabled {
+                ListenerMode::TcpAndUtp
+            } else {
+                ListenerMode::TcpOnly
+            },
+            enable_upnp_port_forwarding: cfg.upnp_enabled,
+            // utp_opts 留空时内核内部 unwrap_or_default()，无需引入 librqbit-utp 类型
+            ..Default::default()
+        };
+
         let trackers: HashSet<url::Url> = cfg
             .extra_trackers
             .iter()
@@ -128,6 +169,7 @@ impl DownloadManager {
 
         SessionOptions {
             dht,
+            listen: Some(listen),
             // 不做会话持久化：进程退出即清空任务列表
             persistence: None,
             fastresume: false,
@@ -136,12 +178,6 @@ impl DownloadManager {
                 upload_bps: kbps_to_bps(cfg.upload_limit_kbps),
             },
             trackers,
-            disable_trackers: cfg.disable_trackers,
-            ipv4_only: cfg.ipv4_only,
-            peer_limit: usize::try_from(cfg.peer_limit).ok().filter(|n| *n > 0),
-            concurrent_init_limit: usize::try_from(cfg.concurrent_init_limit)
-                .ok()
-                .filter(|n| *n > 0),
             ..Default::default()
         }
     }
@@ -167,8 +203,68 @@ impl DownloadManager {
         Ok(session)
     }
 
-    /// 添加磁力链接或种子文件 URL，返回任务 id
-    pub async fn add(&self, magnet: String) -> Result<usize, String> {
+    /// 仅解析磁力（不开始下载），返回种子内文件清单供用户勾选
+    pub async fn probe(&self, magnet: String) -> Result<ProbeResult, String> {
+        let magnet = magnet.trim().to_string();
+        if magnet.is_empty() {
+            return Err("磁力链接不能为空".into());
+        }
+        let session = self.session().await?;
+        let opts = AddTorrentOptions {
+            list_only: true,
+            ..Default::default()
+        };
+        let resp = session
+            .add_torrent(AddTorrent::Url(magnet.into()), Some(opts))
+            .await
+            .map_err(|e| format!("解析磁力失败: {e:#}"))?;
+        let list = match resp {
+            AddTorrentResponse::ListOnly(list) => list,
+            // 已在任务列表中的种子：直接复用其元信息列出文件
+            AddTorrentResponse::AlreadyManaged(_, handle) => {
+                let name = handle.name().unwrap_or_else(|| "未命名种子".into());
+                let mut files = Vec::new();
+                let _ = handle.with_metadata(|m| {
+                    for (id, f) in m.file_infos.iter().enumerate() {
+                        files.push(TorrentFile {
+                            id,
+                            name: f.relative_filename.to_string_lossy().to_string(),
+                            length: f.len,
+                        });
+                    }
+                });
+                let total_length = files.iter().map(|f| f.length).sum();
+                return Ok(ProbeResult {
+                    info_hash: String::new(),
+                    name,
+                    total_length,
+                    files,
+                });
+            }
+            AddTorrentResponse::Added(_, _) => return Err("解析模式不应创建任务".into()),
+        };
+
+        let files = list
+            .info
+            .iter_file_details()
+            .enumerate()
+            .map(|(id, d)| TorrentFile {
+                id,
+                name: d.filename.to_pathbuf().to_string_lossy().to_string(),
+                length: d.len,
+            })
+            .collect::<Vec<_>>();
+        let total_length = files.iter().map(|f| f.length).sum();
+        Ok(ProbeResult {
+            info_hash: list.info_hash.as_string(),
+            name: list.info.name().map(|n| n.to_string()).unwrap_or_default(),
+            total_length,
+            files,
+        })
+    }
+
+    /// 正式添加下载任务；`only_files` 为空表示下载全部文件
+    pub async fn add(&self, magnet: String, only_files: Vec<usize>) -> Result<usize, String> {
         let magnet = magnet.trim().to_string();
         if magnet.is_empty() {
             return Err("磁力链接不能为空".into());
@@ -177,6 +273,11 @@ impl DownloadManager {
         let opts = AddTorrentOptions {
             // 允许续传/播种时覆盖已存在文件
             overwrite: true,
+            only_files: if only_files.is_empty() {
+                None
+            } else {
+                Some(only_files)
+            },
             ..Default::default()
         };
         let resp = session

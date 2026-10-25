@@ -10,6 +10,7 @@ import { PRISTINE_COLORS } from './plugins/vuetify'
 import { isTauri } from './lib/tauri'
 import { closeTopOverlay, pushOverlay } from './lib/overlay'
 import { checkUpdate, openReleasePage, updateHasNew, updateMsg, updateToast } from './lib/update'
+import AppSnackbar from './components/AppSnackbar.vue'
 
 // 有更新 -> 弹窗通知；无更新/失败 -> snackbar 轻提示
 const updateDialog = ref(false)
@@ -154,20 +155,8 @@ onMounted(async () => {
       </v-card>
     </v-dialog>
 
-    <!-- 无更新 / 检查失败：snackbar 轻提示 -->
-    <v-snackbar
-      v-model="updateSnackbar"
-      location="bottom"
-      multi-line
-      :timeout="2500"
-      rounded="lg"
-      color="inverse-surface"
-    >
-      <div class="d-flex align-center ga-2">
-        <v-icon icon="mdi-information-outline" color="primary" size="18" />
-        <span class="text-body-small">{{ updateMsg }}</span>
-      </div>
-    </v-snackbar>
+    <!-- 统一轻提示宿主（所有页面/TS 通过 lib/toast.ts 调用） -->
+    <AppSnackbar />
   </v-app>
 </template>
 

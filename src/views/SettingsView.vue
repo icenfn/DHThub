@@ -11,25 +11,23 @@ import { useSitesStore } from '../stores/sites'
 import { invoke, isTauri } from '../lib/tauri'
 import { speedTestMirror, MIRROR_PROBE_URL } from '../lib/mirrors'
 import { checkUpdate, updateChecking } from '../lib/update'
+import { toast } from '../lib/toast'
 import type { DnsServer, DnsSpeedResult, GithubMirror, MirrorSpeedResult } from '../types'
 
 const sitesStore = useSitesStore()
 const themeMode = ref<'system' | 'light' | 'dark'>('system')
 const autoCheck = ref(true)
 
-// ---------- 轻提示 ----------
-const toast = ref('')
-const showToast = ref(false)
+// ---------- 轻提示（统一走 lib/toast.ts） ----------
 function notice(msg: string) {
-  toast.value = msg
-  showToast.value = true
+  toast.show(msg)
 }
 
 // ---------- 外观 / 更新 ----------
-const THEME_OPTIONS: { value: 'system' | 'light' | 'dark'; label: string; icon: string }[] = [
-  { value: 'system', label: '跟随系统', icon: 'mdi-theme-light-dark' },
-  { value: 'light', label: '浅色', icon: 'mdi-white-balance-sunny' },
-  { value: 'dark', label: '深色', icon: 'mdi-weather-night' },
+const THEME_OPTIONS: { value: 'system' | 'light' | 'dark'; title: string }[] = [
+  { value: 'system', title: '跟随系统' },
+  { value: 'light', title: '浅色' },
+  { value: 'dark', title: '深色' },
 ]
 
 function onThemePick(v: unknown) {
@@ -232,69 +230,52 @@ async function runSpeedTest() {
   }
 }
 
-// ---------- 下载内核（rqbit）配置 ----------
+// ---------- BitTorrent（rqbit 内核）配置 ----------
 const dlCfg = ref<DownloadConfig>({ ...DEFAULT_DOWNLOAD_CONFIG })
 const dlApplying = ref(false)
-/** 修改后需要重启会话才生效的标记 */
-const dlPendingRestart = ref(false)
 /** 追踪器输入框（每行一个 URL） */
 const trackerText = ref('')
 
-/** 把当前配置下发给内核；会话已运行时提示需重启 */
+/** 把当前配置下发给内核；会话已在运行时自动重启以立即生效 */
 async function applyDownloadConfig(silent = false) {
   dlApplying.value = true
   try {
-    const cfg = dlCfg.value
-    cfg.extraTrackers = trackerText.value
-      .split('\n')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0)
+    const cfg: DownloadConfig = {
+      ...dlCfg.value,
+      extraTrackers: trackerText.value
+        .split(String.fromCharCode(10))
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0),
+    }
+    dlCfg.value = cfg
     await settings.saveDownloadConfig(cfg)
     if (isTauri) {
       const needsRestart = await invoke<boolean>('configure_downloads', {
         cfg: {
           dht_enabled: cfg.dhtEnabled,
-          dht_port: cfg.dhtPort,
+          upnp_enabled: cfg.upnpEnabled,
+          utp_enabled: cfg.utpEnabled,
           download_limit_kbps: cfg.downloadLimitKbps,
           upload_limit_kbps: cfg.uploadLimitKbps,
-          peer_limit: cfg.peerLimit,
-          concurrent_init_limit: cfg.concurrentInitLimit,
-          disable_trackers: cfg.disableTrackers,
-          ipv4_only: cfg.ipv4Only,
           extra_trackers: cfg.extraTrackers,
         },
       })
-      dlPendingRestart.value = needsRestart
-      if (!silent) notice(needsRestart ? '配置已保存，重启下载会话后生效' : '下载配置已保存')
-    } else if (!silent) {
-      notice('下载配置已保存')
+      // 不再询问用户：配置变化时直接重启会话，立即生效
+      if (needsRestart) {
+        await invoke('restart_download_session')
+      }
     }
+    if (!silent) toast.success('BitTorrent 设置已生效')
   } catch (e) {
-    notice(String(e))
+    toast.error(String(e))
   } finally {
     dlApplying.value = false
   }
 }
 
-/** 立即重启下载会话，使新配置生效（会丢弃当前任务列表） */
-async function restartSession() {
-  dlApplying.value = true
-  try {
-    await applyDownloadConfig(true)
-    await invoke('restart_download_session')
-    dlPendingRestart.value = false
-    notice('下载会话已重启，配置生效')
-  } catch (e) {
-    notice(String(e))
-  } finally {
-    dlApplying.value = false
-  }
-}
-
-/** 单项开关变更即保存 */
+/** 单项开关/数值变更即保存并自动重启 */
 async function onDlToggle() {
   await applyDownloadConfig(true)
-  notice('下载配置已保存')
 }
 
 // ---------- 数据 ----------
@@ -395,27 +376,19 @@ onMounted(async () => {
               <span class="row__title">主题</span>
               <span class="row__sub">跟随系统或强制指定明暗</span>
             </div>
-            <v-btn-toggle
-              class="seg"
+            <v-select
               :model-value="themeMode"
-              mandatory
-              divided
+              :items="THEME_OPTIONS"
+              item-title="title"
+              item-value="value"
               variant="outlined"
               density="compact"
-              rounded="pill"
-              color="primary"
+              hide-details
+              rounded="lg"
+              class="themesel"
+              aria-label="主题"
               @update:model-value="(v: unknown) => onThemePick(v)"
-            >
-              <v-btn
-                v-for="opt in THEME_OPTIONS"
-                :key="opt.value"
-                :value="opt.value"
-                :icon="opt.icon"
-                size="small"
-                :aria-label="opt.label"
-                class="seg__item"
-              />
-            </v-btn-toggle>
+            />
           </div>
 
           <div class="row">
@@ -485,33 +458,9 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- ===== 下载 / BitTorrent ===== -->
+      <!-- ===== BitTorrent ===== -->
       <section class="group">
-        <h2 class="group__title">下载内核（BitTorrent）</h2>
-
-        <v-banner
-          v-if="dlPendingRestart"
-          density="compact"
-          color="warning"
-          variant="tonal"
-          rounded="lg"
-          class="dlbanner"
-        >
-          配置已修改，重启下载会话后生效
-          <template #actions>
-            <v-btn
-              variant="tonal"
-              color="warning"
-              size="x-small"
-              rounded="pill"
-              class="pillbtn"
-              :loading="dlApplying"
-              @click="restartSession"
-            >
-              立即重启
-            </v-btn>
-          </template>
-        </v-banner>
+        <h2 class="group__title">BitTorrent</h2>
 
         <div class="list">
           <div class="row">
@@ -534,19 +483,37 @@ onMounted(async () => {
 
           <div class="row">
             <div class="row__label">
-              <span class="row__title">DHT 监听端口</span>
-              <span class="row__sub">0 = 随机分配（一般无需指定）</span>
+              <span class="row__title">启用 UPnP 端口映射</span>
+              <span class="row__sub">自动在路由器上开放监听端口，提升连通性</span>
             </div>
-            <v-text-field
-              v-model.number="dlCfg.dhtPort"
-              type="number"
-              variant="outlined"
+            <v-switch
+              v-model="dlCfg.upnpEnabled"
+              color="primary"
               density="compact"
+              size="small"
               hide-details
-              class="num"
-              :min="0"
-              :max="65535"
-              @change="onDlToggle"
+              inset
+              class="row__switch"
+              aria-label="启用 UPnP 端口映射"
+              @update:model-value="onDlToggle"
+            />
+          </div>
+
+          <div class="row">
+            <div class="row__label">
+              <span class="row__title">启用 uTP</span>
+              <span class="row__sub">基于 UDP 的传输协议，弱网环境下更稳定</span>
+            </div>
+            <v-switch
+              v-model="dlCfg.utpEnabled"
+              color="primary"
+              density="compact"
+              size="small"
+              hide-details
+              inset
+              class="row__switch"
+              aria-label="启用 uTP"
+              @update:model-value="onDlToggle"
             />
           </div>
 
@@ -583,76 +550,6 @@ onMounted(async () => {
               @change="onDlToggle"
             />
           </div>
-
-          <div class="row">
-            <div class="row__label">
-              <span class="row__title">Peer 上限</span>
-              <span class="row__sub">每个任务的最大连接数，0 = 内核默认</span>
-            </div>
-            <v-text-field
-              v-model.number="dlCfg.peerLimit"
-              type="number"
-              variant="outlined"
-              density="compact"
-              hide-details
-              class="num"
-              :min="0"
-              @change="onDlToggle"
-            />
-          </div>
-
-          <div class="row">
-            <div class="row__label">
-              <span class="row__title">并发初始化</span>
-              <span class="row__sub">同时建立连接的任务数，0 = 内核默认</span>
-            </div>
-            <v-text-field
-              v-model.number="dlCfg.concurrentInitLimit"
-              type="number"
-              variant="outlined"
-              density="compact"
-              hide-details
-              class="num"
-              :min="0"
-              @change="onDlToggle"
-            />
-          </div>
-
-          <div class="row">
-            <div class="row__label">
-              <span class="row__title">禁用 Tracker</span>
-              <span class="row__sub">仅使用 DHT 发现 peer（需开启 DHT）</span>
-            </div>
-            <v-switch
-              v-model="dlCfg.disableTrackers"
-              color="primary"
-              density="compact"
-              size="small"
-              hide-details
-              inset
-              class="row__switch"
-              aria-label="禁用 Tracker"
-              @update:model-value="onDlToggle"
-            />
-          </div>
-
-          <div class="row">
-            <div class="row__label">
-              <span class="row__title">仅 IPv4</span>
-              <span class="row__sub">网络不支持 IPv6 时可开启</span>
-            </div>
-            <v-switch
-              v-model="dlCfg.ipv4Only"
-              color="primary"
-              density="compact"
-              size="small"
-              hide-details
-              inset
-              class="row__switch"
-              aria-label="仅 IPv4"
-              @update:model-value="onDlToggle"
-            />
-          </div>
         </div>
 
         <div class="trackerbox">
@@ -661,10 +558,10 @@ onMounted(async () => {
             v-model="trackerText"
             variant="outlined"
             density="compact"
-            rows="3"
-            auto-grow
+            :rows="6"
+            no-resize
             hide-details
-            class="mono-input"
+            class="mono-input trackerarea"
             placeholder="udp://tracker.openbittorrent.com:6969/announce"
             @blur="onDlToggle"
           />
@@ -1025,14 +922,17 @@ onMounted(async () => {
   min-height: 40px;
 }
 
-/* ---------- 主题分段选择 ---------- */
-.seg {
+/* ---------- 主题下拉 ---------- */
+.themesel {
   flex-shrink: 0;
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  width: 132px;
 }
 
-.seg__item {
-  min-width: 0;
+.themesel :deep(.v-field__input) {
+  font-size: 0.8rem;
+  min-height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* ---------- 延迟标签 ---------- */
@@ -1108,11 +1008,6 @@ onMounted(async () => {
   padding: 8px 12px 12px;
 }
 
-/* ---------- 下载内核配置 ---------- */
-.dlbanner {
-  margin-bottom: 8px;
-}
-
 .num {
   flex-shrink: 0;
   width: 110px;
@@ -1127,6 +1022,14 @@ onMounted(async () => {
 .trackerbox {
   margin-top: 6px;
   padding: 0 4px;
+}
+
+.trackerarea :deep(textarea) {
+  min-height: 128px;
+  height: 128px;
+  max-height: 128px;
+  font-size: 0.72rem;
+  line-height: 1.45;
 }
 
 .trackerbox__title {

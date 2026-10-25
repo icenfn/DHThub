@@ -1,21 +1,19 @@
 <script setup lang="ts">
-// 下载页：对接 Rust 侧内嵌的 BitTorrent 内核（librqbit / rqbit）
-// 交互：粘贴磁力链接添加任务；任务卡展示进度 / 速度 / 状态，可暂停、继续、删除。
-// 数据：命令返回 librqbit 的 TorrentStats 原样 JSON，这里只做展示层取值。
+// 下载页：右下角悬浮按钮新增任务 → 先解析磁力列出文件 → 用户勾选后开始下载。
+// 数据来自 Rust 侧内嵌的 librqbit；进度由 1.2s 轮询拉取。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke, isTauri } from '../lib/tauri'
 import { settings } from '../stores/settings'
+import { toast } from '../lib/toast'
 
 const emit = defineEmits<{ (e: 'go-sites'): void }>()
 
-/** librqbit TorrentStats 的前端最小视图 */
 interface RawStats {
   state?: string
   paused?: boolean
   error?: string | null
   progress_bytes?: number
   total_bytes?: number
-  uploaded_bytes?: number
   finished?: boolean
   live?: {
     download_speed?: { mbps?: number }
@@ -30,23 +28,35 @@ interface DownloadRow {
   stats: RawStats
 }
 
+interface TorrentFile {
+  id: number
+  name: string
+  length: number
+}
+
+interface ProbeResult {
+  info_hash: string
+  name: string
+  total_length: number
+  files: TorrentFile[]
+}
+
 const rows = ref<DownloadRow[]>([])
-const magnet = ref('')
-const adding = ref(false)
 const loading = ref(false)
 const message = ref('')
 const busyIds = ref<Set<number>>(new Set())
 
+// 新增任务流程
+const addDialog = ref(false)
+const magnet = ref('')
+const probing = ref(false)
+const probingInfo = ref('')
+const probe = ref<ProbeResult | null>(null)
+const selected = ref<Set<number>>(new Set())
+const adding = ref(false)
+
 let timer: number | undefined
 
-const toast = ref('')
-const showToast = ref(false)
-function notice(msg: string) {
-  toast.value = msg
-  showToast.value = true
-}
-
-/** 字节数格式化（B / KB / MB / GB） */
 function fmtBytes(n?: number): string {
   const v = n ?? 0
   if (v <= 0) return '0 B'
@@ -67,7 +77,6 @@ function fmtSpeed(mbps?: number): string {
   return `${v.toFixed(2)} MB/s`
 }
 
-/** 进度百分比（0-100），用已校验字节 / 总字节 */
 function percent(st: RawStats): number {
   const total = st.total_bytes ?? 0
   const got = st.progress_bytes ?? 0
@@ -75,7 +84,6 @@ function percent(st: RawStats): number {
   return Math.min(100, Math.round((got / total) * 1000) / 10)
 }
 
-/** 状态文案与色板 */
 function stateOf(row: DownloadRow): { text: string; color: string } {
   const st = row.stats
   if (st.error) return { text: '出错', color: 'error' }
@@ -88,6 +96,16 @@ function stateOf(row: DownloadRow): { text: string; color: string } {
 
 const activeCount = computed(() => rows.value.filter((r) => !r.stats.finished && !r.paused).length)
 const doneCount = computed(() => rows.value.filter((r) => r.stats.finished).length)
+const selectedBytes = computed(() =>
+  probe.value
+    ? probe.value.files
+        .filter((f) => selected.value.has(f.id))
+        .reduce((sum, f) => sum + f.length, 0)
+    : 0,
+)
+const allSelected = computed(
+  () => !!probe.value && probe.value.files.length > 0 && selected.value.size === probe.value.files.length,
+)
 
 async function refresh(quiet = true) {
   if (!isTauri) return
@@ -102,24 +120,77 @@ async function refresh(quiet = true) {
   }
 }
 
-async function addTask() {
+function resetAdd() {
+  magnet.value = ''
+  probe.value = null
+  selected.value = new Set()
+  probingInfo.value = ''
+}
+
+function openAdd() {
+  resetAdd()
+  addDialog.value = true
+}
+
+/** 第一步：解析磁力，列出文件供勾选 */
+async function doProbe() {
   const m = magnet.value.trim()
   if (!m) {
-    notice('请先粘贴磁力链接')
+    toast.warning('请先粘贴磁力链接')
     return
   }
   if (!m.startsWith('magnet:')) {
-    notice('目前仅支持 magnet: 磁力链接')
+    toast.warning('目前仅支持 magnet: 磁力链接')
+    return
+  }
+  probing.value = true
+  probingInfo.value = '正在解析种子…'
+  try {
+    const r = await invoke<ProbeResult>('probe_download', { magnet: m })
+    probe.value = r
+    // 默认全选，用户可取消不需要的文件
+    selected.value = new Set(r.files.map((f) => f.id))
+    probingInfo.value = ''
+    if (r.files.length === 0) toast.info('该种子未包含文件信息')
+  } catch (e) {
+    probingInfo.value = ''
+    toast.error(String(e))
+  } finally {
+    probing.value = false
+  }
+}
+
+function toggleFile(id: number) {
+  const next = new Set(selected.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selected.value = next
+}
+
+function toggleAll() {
+  if (!probe.value) return
+  selected.value = allSelected.value ? new Set() : new Set(probe.value.files.map((f) => f.id))
+}
+
+/** 第二步：按勾选结果正式添加任务 */
+async function confirmAdd() {
+  if (!probe.value) return
+  if (selected.value.size === 0) {
+    toast.warning('请至少选择一个文件')
     return
   }
   adding.value = true
   try {
-    await invoke('add_download', { magnet: m })
-    magnet.value = ''
-    notice('已添加下载任务')
+    await invoke('add_download', {
+      magnet: magnet.value.trim(),
+      onlyFiles: [...selected.value].sort((a, b) => a - b),
+    })
+    toast.success('已开始下载')
+    addDialog.value = false
+    resetAdd()
     await refresh()
   } catch (e) {
-    notice(String(e))
+    toast.error(String(e))
   } finally {
     adding.value = false
   }
@@ -137,14 +208,14 @@ async function toggle(row: DownloadRow) {
   try {
     if (row.paused || row.stats.state === 'paused') {
       await invoke('resume_download', { id: row.id })
-      notice('已继续下载')
+      toast.success('已继续下载')
     } else {
       await invoke('pause_download', { id: row.id })
-      notice('已暂停下载')
+      toast.info('已暂停下载')
     }
     await refresh()
   } catch (e) {
-    notice(String(e))
+    toast.error(String(e))
   } finally {
     await markBusy(row.id, false)
   }
@@ -154,16 +225,15 @@ async function remove(row: DownloadRow) {
   await markBusy(row.id, true)
   try {
     await invoke('remove_download', { id: row.id, deleteFiles: false })
-    notice('已移除任务（保留已下载文件）')
+    toast.info('已移除任务（保留已下载文件）')
     await refresh()
   } catch (e) {
-    notice(String(e))
+    toast.error(String(e))
   } finally {
     await markBusy(row.id, false)
   }
 }
 
-/** 把设置页的下载内核配置下发给内核（未创建会话时生效于首次初始化） */
 async function pushConfig() {
   if (!isTauri) return
   try {
@@ -171,18 +241,15 @@ async function pushConfig() {
     await invoke('configure_downloads', {
       cfg: {
         dht_enabled: c.dhtEnabled,
-        dht_port: c.dhtPort,
+        upnp_enabled: c.upnpEnabled,
+        utp_enabled: c.utpEnabled,
         download_limit_kbps: c.downloadLimitKbps,
         upload_limit_kbps: c.uploadLimitKbps,
-        peer_limit: c.peerLimit,
-        concurrent_init_limit: c.concurrentInitLimit,
-        disable_trackers: c.disableTrackers,
-        ipv4_only: c.ipv4Only,
         extra_trackers: c.extraTrackers,
       },
     })
   } catch {
-    // 配置下发失败不阻塞页面（添加任务时内核会用当前配置初始化并报错）
+    // 配置下发失败不阻塞页面
   }
 }
 
@@ -191,7 +258,6 @@ onMounted(async () => {
   await pushConfig()
   await refresh(false)
   if (!isTauri) return
-  // 轮询刷新进度：下载速度/进度都在内核侧计算，这里只做拉取
   timer = window.setInterval(() => {
     void refresh()
   }, 1200)
@@ -204,35 +270,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page-scroll">
-    <div class="page-inner">
-      <!-- 添加任务 -->
-      <section class="add">
-        <div class="add__field">
-          <v-icon icon="mdi-magnet" size="18" class="add__icon" />
-          <input
-            v-model="magnet"
-            class="add__input"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="粘贴 magnet: 磁力链接"
-            @keyup.enter="addTask"
-          />
-        </div>
-        <v-btn
-          class="add__btn"
-          color="primary"
-          variant="flat"
-          rounded="pill"
-          size="small"
-          :loading="adding"
-          @click="addTask"
-        >
-          添加
-        </v-btn>
-      </section>
-
+    <div class="page-inner dlwrap">
       <div v-if="rows.length" class="summary">
         <span>共 {{ rows.length }} 个任务</span>
         <span class="dot">·</span>
@@ -245,23 +283,11 @@ onBeforeUnmount(() => {
         {{ message }}
       </v-alert>
 
-      <!-- 任务列表 -->
       <div v-if="rows.length" class="list">
-        <v-card
-          v-for="row in rows"
-          :key="row.id"
-          class="task"
-          variant="outlined"
-          rounded="lg"
-        >
+        <v-card v-for="row in rows" :key="row.id" class="task" variant="outlined" rounded="lg">
           <div class="task__head">
             <div class="task__title" :title="row.name">{{ row.name }}</div>
-            <v-chip
-              size="x-small"
-              variant="tonal"
-              :color="stateOf(row).color"
-              class="task__state"
-            >
+            <v-chip size="x-small" variant="tonal" :color="stateOf(row).color" class="task__state">
               {{ stateOf(row).text }}
             </v-chip>
           </div>
@@ -321,89 +347,148 @@ onBeforeUnmount(() => {
         </v-card>
       </div>
 
-      <!-- 空态 -->
       <v-empty-state
         v-else-if="!loading"
         icon="mdi-download-outline"
         title="暂无下载任务"
-        text="在上方粘贴磁力链接即可开始下载。文件保存在应用数据目录的 downloads 下。"
+        text="点击右下角按钮粘贴磁力链接即可添加，下载前可勾选要下载的文件。"
         class="empty"
       >
         <template #actions>
-          <v-btn
-            variant="tonal"
-            rounded="pill"
-            size="small"
-            prepend-icon="mdi-antenna"
-            @click="emit('go-sites')"
-          >
+          <v-btn variant="tonal" rounded="pill" size="small" prepend-icon="mdi-antenna" @click="emit('go-sites')">
             管理搜索源
           </v-btn>
         </template>
       </v-empty-state>
     </div>
 
-    <v-snackbar v-model="showToast" :timeout="2200" location="bottom">
-      {{ toast }}
-    </v-snackbar>
+    <!-- 悬浮新增按钮 -->
+    <button class="fab" type="button" aria-label="新增下载任务" @click="openAdd">
+      <v-icon icon="mdi-plus" size="26" />
+    </button>
+
+    <!-- 新增任务弹窗：先解析，再勾选文件 -->
+    <v-dialog v-model="addDialog" max-width="520" scrollable>
+      <v-card rounded="lg" class="dlg">
+        <div class="dlg__head">
+          <span class="dlg__title">{{ probe ? '选择要下载的文件' : '新增下载任务' }}</span>
+          <v-btn
+            v-if="probe"
+            variant="text"
+            size="x-small"
+            rounded="pill"
+            class="pillbtn"
+            prepend-icon="mdi-arrow-left"
+            @click="probe = null"
+          >
+            重填
+          </v-btn>
+        </div>
+
+        <v-divider />
+
+        <div class="dlg__body">
+          <!-- 步骤一：输入磁力 -->
+          <template v-if="!probe">
+            <v-textarea
+              v-model="magnet"
+              variant="outlined"
+              density="compact"
+              rows="4"
+              no-resize
+              hide-details
+              auto-focus
+              class="mono-input"
+              placeholder="magnet:?xt=urn:btih:..."
+            />
+            <p class="hint">{{ probingInfo || '粘贴磁力后先解析种子内容，确认文件再开始下载。' }}</p>
+          </template>
+
+          <!-- 步骤二：勾选文件 -->
+          <template v-else>
+            <div class="pinfo">
+              <span class="pinfo__name">{{ probe.name || '未命名种子' }}</span>
+              <span class="pinfo__meta">
+                {{ probe.files.length }} 个文件 · 共 {{ fmtBytes(probe.total_length) }}
+              </span>
+            </div>
+
+            <div class="pall">
+              <v-checkbox
+                :model-value="allSelected"
+                density="compact"
+                hide-details
+                color="primary"
+                label="全选"
+                class="pall__box"
+                @update:model-value="toggleAll"
+              />
+              <span class="pall__sum">已选 {{ fmtBytes(selectedBytes) }}</span>
+            </div>
+
+            <div class="files">
+              <label v-for="f in probe.files" :key="f.id" class="file">
+                <v-checkbox
+                  :model-value="selected.has(f.id)"
+                  density="compact"
+                  hide-details
+                  color="primary"
+                  class="file__box"
+                  @update:model-value="toggleFile(f.id)"
+                />
+                <span class="file__name" :title="f.name">{{ f.name }}</span>
+                <span class="file__size">{{ fmtBytes(f.length) }}</span>
+              </label>
+            </div>
+          </template>
+        </div>
+
+        <div class="dlg__actions">
+          <v-btn variant="text" size="small" rounded="pill" class="pillbtn" @click="addDialog = false">
+            取消
+          </v-btn>
+          <v-btn
+            v-if="!probe"
+            variant="flat"
+            color="primary"
+            size="small"
+            rounded="pill"
+            class="pillbtn"
+            :loading="probing"
+            @click="doProbe"
+          >
+            解析
+          </v-btn>
+          <v-btn
+            v-else
+            variant="flat"
+            color="primary"
+            size="small"
+            rounded="pill"
+            class="pillbtn"
+            :loading="adding"
+            :disabled="selected.size === 0"
+            @click="confirmAdd"
+          >
+            开始下载（{{ selected.size }}）
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <style scoped>
 /* 滚动容器与内容宽度沿用 src/styles/main.scss 的 .page-scroll / .page-inner */
-
-/* ---------- 添加任务 ---------- */
-.add {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.dlwrap {
+  padding-bottom: calc(96px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
-.add__field {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 42px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgb(var(--v-theme-surface-container-high));
-}
-
-.add__icon {
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-
-.add__input {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  font-size: 0.82rem;
-  color: rgb(var(--v-theme-on-surface));
-}
-
-.add__input::placeholder {
-  color: rgb(var(--v-theme-on-surface-variant));
-  opacity: 0.8;
-}
-
-.add__btn {
-  flex-shrink: 0;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 600;
-}
-
-/* ---------- 汇总 ---------- */
 .summary {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 12px 2px 8px;
+  margin: 2px 2px 9px;
   font-size: 0.7rem;
   color: rgb(var(--v-theme-on-surface-variant));
 }
@@ -412,7 +497,6 @@ onBeforeUnmount(() => {
   opacity: 0.5;
 }
 
-/* ---------- 任务卡 ---------- */
 .list {
   display: flex;
   flex-direction: column;
@@ -488,6 +572,138 @@ onBeforeUnmount(() => {
   margin-top: 8px;
 }
 
+/* ---------- 悬浮按钮 ---------- */
+.fab {
+  position: fixed;
+  right: max(16px, var(--safe-area-inset-right, env(safe-area-inset-right, 0px)));
+  bottom: calc(74px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  z-index: 30;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: rgb(var(--v-theme-on-primary));
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+.fab:active {
+  transform: scale(0.94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
+}
+
+/* ---------- 弹窗 ---------- */
+.dlg {
+  background: rgb(var(--v-theme-surface)) !important;
+}
+
+.dlg__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 13px 16px 11px;
+}
+
+.dlg__title {
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.dlg__body {
+  padding: 12px 14px;
+  max-height: 58vh;
+  overflow-y: auto;
+}
+
+.hint {
+  margin: 8px 2px 0;
+  font-size: 0.68rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.pinfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.pinfo__name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+  word-break: break-all;
+}
+
+.pinfo__meta {
+  font-size: 0.68rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.pall {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.6));
+}
+
+.pall__box :deep(.v-label) {
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.pall__sum {
+  font-size: 0.68rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.files {
+  display: flex;
+  flex-direction: column;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 38px;
+  cursor: pointer;
+}
+
+.file__box {
+  flex-shrink: 0;
+  margin-inline-end: 0;
+}
+
+.file__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.74rem;
+  color: rgb(var(--v-theme-on-surface));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file__size {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.dlg__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 8px 12px 12px;
+}
+
 .pillbtn {
   text-transform: none;
   letter-spacing: 0;
@@ -495,6 +711,6 @@ onBeforeUnmount(() => {
 }
 
 .empty {
-  margin-top: 14vh;
+  margin-top: 12vh;
 }
 </style>

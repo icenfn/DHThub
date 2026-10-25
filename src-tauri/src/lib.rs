@@ -7,7 +7,7 @@ mod models;
 mod search;
 mod sites;
 
-use downloads::{DownloadConfig, DownloadManager, DownloadRow};
+use downloads::{DownloadConfig, DownloadManager, DownloadRow, ProbeResult};
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
 use models::{SiteConfig, SiteOutcome, SiteTestResult};
 use sites::SiteStore;
@@ -337,10 +337,23 @@ async fn restart_download_session(state: tauri::State<'_, AppState>) -> Result<(
     state.downloads.restart().await
 }
 
-/// 添加磁力链接下载，返回任务 id
+/// 仅解析磁力，返回种子内文件清单（供用户勾选要下载的文件）
 #[tauri::command]
-async fn add_download(state: tauri::State<'_, AppState>, magnet: String) -> Result<usize, String> {
-    state.downloads.add(magnet).await
+async fn probe_download(
+    state: tauri::State<'_, AppState>,
+    magnet: String,
+) -> Result<ProbeResult, String> {
+    state.downloads.probe(magnet).await
+}
+
+/// 正式添加下载任务；onlyFiles 为空表示下载全部文件
+#[tauri::command]
+async fn add_download(
+    state: tauri::State<'_, AppState>,
+    magnet: String,
+    only_files: Vec<usize>,
+) -> Result<usize, String> {
+    state.downloads.add(magnet, only_files).await
 }
 
 /// 列出全部下载任务（含进度统计）
@@ -413,6 +426,7 @@ pub fn run() {
             get_history,
             clear_history,
             clear_all_history,
+            probe_download,
             add_download,
             list_downloads,
             pause_download,

@@ -1,16 +1,21 @@
 <script setup lang="ts">
-// 添加自定义搜索源：独立的整页表单（不再使用弹窗）
-// 移动端整页填写比弹窗更好用，也更适合字段较多的表达式配置。
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+// 添加 / 编辑自定义搜索源：独立整页表单（新增与修改共用此页）
+// 修改模式通过 /site/new?id=xxx 进入，保存时走 updateCustom。
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useSitesStore } from '../stores/sites'
+import { toast } from '../lib/toast'
 import type { SiteConfig } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const sitesStore = useSitesStore()
 
 const METHOD_ITEMS = ['GET', 'POST']
 const ATTR_ITEMS = ['href', 'text', 'src', 'data-clipboard-text']
+
+const editingId = ref<string | null>(null)
+const isEdit = computed(() => !!editingId.value)
 
 const form = reactive<SiteConfig>({
   name: '',
@@ -40,6 +45,45 @@ const canSave = computed(() => !!form.name.trim() && !!form.request.search_url.t
 function back() {
   router.back()
 }
+
+onMounted(async () => {
+  await sitesStore.load()
+  const id = typeof route.query.id === 'string' ? route.query.id : ''
+  if (!id) return
+  const site = sitesStore.sites.find((s) => s.id === id)
+  if (!site) {
+    toast.error('未找到该搜索源')
+    return
+  }
+  editingId.value = id
+  form.name = site.name ?? ''
+  form.info = site.info ?? ''
+  form.is_custom = site.is_custom
+  form.request = {
+    method: site.request?.method ?? 'GET',
+    search_url: site.request?.search_url ?? '',
+    headers: { ...(site.request?.headers ?? {}) },
+    timeout_ms: site.request?.timeout_ms ?? 12000,
+  }
+  const expr = site.expression_model
+  form.expression_model = {
+    group: expr?.group ?? '',
+    title: expr?.title ?? '',
+    date: expr?.date ?? '',
+    size: expr?.size ?? '',
+    url: { ...(expr?.url as { sel?: string; attr?: string }) },
+    magnet: { ...(expr?.magnet as { sel?: string; attr?: string }) },
+  }
+  headersText.value = Object.keys(form.request.headers).length
+    ? JSON.stringify(form.request.headers)
+    : ''
+  const u = expr?.url as { sel?: string; attr?: string } | undefined
+  urlSel.value = u?.sel ?? ''
+  urlAttr.value = u?.attr ?? 'href'
+  const m = expr?.magnet as { sel?: string; attr?: string } | undefined
+  magnetSel.value = m?.sel ?? ''
+  magnetAttr.value = m?.attr ?? 'href'
+})
 
 async function save() {
   err.value = ''
@@ -76,7 +120,14 @@ async function save() {
           : { sel: '', attr: 'href' },
       },
     }
-    await sitesStore.addCustom(site)
+    if (editingId.value) {
+      site.id = editingId.value
+      await sitesStore.updateCustom(site)
+      toast.success('搜索源已更新')
+    } else {
+      await sitesStore.addCustom(site)
+      toast.success('自定义站点已添加，请开启开关后使用')
+    }
     router.back()
   } catch (e) {
     err.value = String(e)
@@ -88,11 +139,11 @@ async function save() {
 
 <template>
   <div class="page-scroll">
-    <div class="page-inner">
+    <div class="page-inner newwrap">
       <!-- 顶部：返回 + 标题 + 保存 -->
       <div class="nf-bar">
         <v-btn icon="mdi-arrow-left" variant="text" size="small" title="返回" @click="back" />
-        <span class="nf-bar__title">添加自定义站点</span>
+        <span class="nf-bar__title">{{ isEdit ? '修改搜索源' : '添加自定义站点' }}</span>
         <v-btn
           variant="text"
           color="primary"
@@ -189,6 +240,22 @@ async function save() {
           auto-grow
           hide-details="auto"
           class="mt-3 mono"
+        />
+      </section>
+
+      <!-- 结果容器 -->
+      <section class="grp">
+        <div class="grp__title">结果容器</div>
+        <v-text-field
+          v-model="form.expression_model.group"
+          label="条目容器选择器"
+          placeholder=".search-item"
+          hint="每条搜索结果的外层元素"
+          persistent-hint
+          variant="outlined"
+          density="comfortable"
+          rounded="lg"
+          class="mono"
         />
       </section>
 
@@ -296,8 +363,10 @@ async function save() {
 </template>
 
 <style scoped>
-.page-inner {
-  padding-bottom: calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+/* 顶部/底部安全边距：避免内容顶到状态栏或压在导航栏下面 */
+.newwrap {
+  padding-top: calc(6px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
+  padding-bottom: calc(28px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
 .nf-bar {

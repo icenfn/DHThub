@@ -35,7 +35,10 @@ const navLeft = [0, 1]
 /** 底部导航右组：下载、设置 */
 const navRight = [3, 4]
 
-const tab = ref(SEARCH_INDEX)
+// 跨组件挂载保持上次所在页：从资源详情 / 搜索结果返回首页时
+// 不会跳回「搜索源」页（组件重建后 swiper 默认停在 0，正是该 bug 的成因）
+let savedTab = SEARCH_INDEX
+const tab = ref(savedTab)
 const swiperRef = ref<SwiperInterface | null>(null)
 
 const appTitle = computed(() => titles[tab.value] ?? '搜索')
@@ -46,17 +49,30 @@ const shellStyle = computed(() => ({
 }))
 
 function onSwiper(swiper: Swiper) {
-  swiperRef.value = swiper as unknown as SwiperInterface
+  const s = swiper as unknown as SwiperInterface
+  swiperRef.value = s
+  // 挂载后立即对齐到当前页，避免先闪一下第一页
+  if (s.activeIndex !== tab.value) {
+    s.slideTo(tab.value, 0)
+  }
 }
 
 function onSlideChange(swiper: Swiper) {
   const s = swiper as unknown as SwiperInterface
   tab.value = s.activeIndex
+  savedTab = s.activeIndex
   document.title = `${titles[tab.value]} · DHThub`
 }
 
 function goTab(i: number) {
-  if (i === tab.value) return
+  // 以 swiper 实际位置为准：tab 与 swiper 短暂不同步时
+  // 也要能正确激活/解除底部 tab 的选中态
+  const active = swiperRef.value?.activeIndex ?? tab.value
+  if (i === active) {
+    tab.value = i
+    savedTab = i
+    return
+  }
   swiperRef.value?.slideTo(i, 280)
 }
 
@@ -81,8 +97,8 @@ function openSitesPage() {
 
 <template>
   <div class="shell" :style="shellStyle">
-    <!-- 顶栏：仅保留居中标题 -->
-    <v-toolbar class="topbar" color="surface" flat height="auto">
+    <!-- 顶栏：仅保留居中标题；搜索页自带大标题，不显示应用栏 -->
+    <v-toolbar v-if="tab !== SEARCH_INDEX" class="topbar" color="surface" flat height="auto">
       <span class="topbar__title">{{ appTitle }}</span>
     </v-toolbar>
 
@@ -111,7 +127,12 @@ function openSitesPage() {
 
     <!-- 滑动窗口主体 -->
     <div class="body">
-      <z-swiper style="height: 100%" @swiper="onSwiper" @slide-change="onSlideChange">
+      <z-swiper
+        style="height: 100%"
+        :initial-slide="tab"
+        @swiper="onSwiper"
+        @slide-change="onSlideChange"
+      >
         <z-swiper-item style="height: 100%">
           <div class="pane">
             <SitesView />

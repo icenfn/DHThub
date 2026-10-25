@@ -8,37 +8,28 @@ import type { DnsServer, GithubMirror, SettingsExportFile } from '../types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
-/** 下载内核（rqbit）配置；数值 0 / 空 = 内核默认或不限速 */
+/** 下载内核（rqbit）配置；限速 0 = 不限速 */
 export interface DownloadConfig {
   /** 启用 DHT（无 tracker 时找 peer） */
   dhtEnabled: boolean
-  /** DHT 监听端口，0 = 随机 */
-  dhtPort: number
+  /** 启用 UPnP 端口映射（路由器自动放行） */
+  upnpEnabled: boolean
+  /** 启用 uTP（基于 UDP 的传输，对弱网更友好） */
+  utpEnabled: boolean
   /** 下载限速 KB/s，0 = 不限 */
   downloadLimitKbps: number
   /** 上传限速 KB/s，0 = 不限 */
   uploadLimitKbps: number
-  /** 每个任务的 peer 上限，0 = 内核默认 */
-  peerLimit: number
-  /** 并发初始化任务数，0 = 内核默认 */
-  concurrentInitLimit: number
-  /** 禁用 tracker 通信（纯 DHT 模式） */
-  disableTrackers: boolean
-  /** 仅使用 IPv4 */
-  ipv4Only: boolean
   /** 追加到每个任务的 tracker 列表 */
   extraTrackers: string[]
 }
 
 export const DEFAULT_DOWNLOAD_CONFIG: DownloadConfig = {
   dhtEnabled: true,
-  dhtPort: 0,
+  upnpEnabled: true,
+  utpEnabled: true,
   downloadLimitKbps: 0,
   uploadLimitKbps: 0,
-  peerLimit: 0,
-  concurrentInitLimit: 0,
-  disableTrackers: false,
-  ipv4Only: false,
   extraTrackers: [],
 }
 
@@ -223,13 +214,10 @@ class SettingsStore {
     const dc = incoming.downloadConfig
     merged.downloadConfig = {
       dhtEnabled: typeof dc?.dhtEnabled === 'boolean' ? dc.dhtEnabled : true,
-      dhtPort: clampUint(dc?.dhtPort, 0, 65535),
+      upnpEnabled: typeof dc?.upnpEnabled === 'boolean' ? dc.upnpEnabled : true,
+      utpEnabled: typeof dc?.utpEnabled === 'boolean' ? dc.utpEnabled : true,
       downloadLimitKbps: clampUint(dc?.downloadLimitKbps, 0, 1000000),
       uploadLimitKbps: clampUint(dc?.uploadLimitKbps, 0, 1000000),
-      peerLimit: clampUint(dc?.peerLimit, 0, 10000),
-      concurrentInitLimit: clampUint(dc?.concurrentInitLimit, 0, 64),
-      disableTrackers: dc?.disableTrackers === true,
-      ipv4Only: dc?.ipv4Only === true,
       extraTrackers: Array.isArray(dc?.extraTrackers)
         ? dc.extraTrackers.filter((t): t is string => typeof t === 'string').slice(0, 100)
         : [],
