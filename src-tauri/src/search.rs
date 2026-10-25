@@ -76,11 +76,9 @@ async fn search_one(
                     it.url = normalize_detail_url(&it.url, &origin);
                 }
             }
-            // 列表页本身没有磁力（如磁力狗、ØMagnet 只在详情页给），
-            // 配置了 magnet_detail 就回源详情页解析真实 magnet
-            if site.expression_model.magnet_detail.is_some() {
-                resolve_detail_magnets(client, site, &mut items).await;
-            }
+            // 列表页本身没有磁力的站点（如磁力狗、ØMagnet 只在详情页给）：
+            // 搜索阶段 **不再** 回源抓详情页，避免每个源多打十几次请求。
+            // 真实 magnet 由前端在进入资源详情页时调用 resolve_magnet 按需解析。
             // 兜底：不合法的「磁力」（含短链）清空，避免详情页把它当磁力展示/复制
             for it in items.iter_mut() {
                 if !it.magnet.is_empty() && !looks_like_magnet(&it.magnet) {
@@ -115,60 +113,27 @@ fn looks_like_magnet(s: &str) -> bool {
     t.len() > 20 && t.to_ascii_lowercase().starts_with("magnet:?") && t.contains("xt=urn:btih")
 }
 
-/// 单个站点最多回源解析多少条详情页（防止列表很长时把站点打挂）
-const MAX_DETAIL_LOOKUPS: usize = 16;
-/// 回源解析的并发上限
-const DETAIL_CONCURRENCY: usize = 4;
-
-/// 对列表里缺磁力的条目回源「详情页」解析真实 magnet。
-/// 只处理有 url 且磁力为空 / 不是合法磁力的条目，失败的保持原样（后续会被清空）。
-async fn resolve_detail_magnets(
+/// 按需解析单条资源的真实磁力：只抓一个详情页。
+///
+/// 搜索阶段只拿到列表页数据（很多站点列表页并不给真实 magnet），
+/// 进入资源详情页时再调用本函数回源，避免搜索时对每个站点发起十几次额外请求。
+pub(crate) async fn resolve_one_magnet(
     client: &reqwest::Client,
     site: &SiteConfig,
-    items: &mut [MagnetItem],
-) {
-    let Some(spec) = site.expression_model.magnet_detail.as_ref() else {
-        return;
-    };
-    let targets: Vec<usize> = items
-        .iter()
-        .enumerate()
-        .filter(|(_, it)| {
-            !it.url.trim().is_empty() && (!looks_like_magnet(&it.magnet) || it.magnet.is_empty())
-        })
-        .map(|(i, _)| i)
-        .take(MAX_DETAIL_LOOKUPS)
-        .collect();
-    if targets.is_empty() {
-        return;
-    }
-
+    detail_url: &str,
+) -> Option<String> {
+    let spec = site.expression_model.magnet_detail.as_ref()?;
     let origin = site_origin(site);
-    let semaphore = Arc::new(Semaphore::new(DETAIL_CONCURRENCY));
-    let mut tasks = tokio::task::JoinSet::new();
-    for idx in targets {
-        let client = client.clone();
-        let semaphore = semaphore.clone();
-        let site = site.clone();
-        let spec = spec.clone();
-        let detail_url = normalize_detail_url(&items[idx].url, &origin);
-        tasks.spawn(async move {
-            let _permit = semaphore.acquire().await.ok()?;
-            let html = fetch_html(&client, &site, &detail_url).await.ok()?;
-            let magnet = extract_field_doc(&html, &spec);
-            if looks_like_magnet(&magnet) {
-                Some((idx, magnet.trim().to_string()))
-            } else {
-                None
-            }
-        });
+    let target = normalize_detail_url(detail_url, &origin);
+    if target.trim().is_empty() {
+        return None;
     }
-    while let Some(res) = tasks.join_next().await {
-        if let Ok(Some((idx, magnet))) = res {
-            if let Some(it) = items.get_mut(idx) {
-                it.magnet = magnet;
-            }
-        }
+    let html = fetch_html(client, site, &target).await.ok()?;
+    let magnet = extract_field_doc(&html, &spec);
+    if looks_like_magnet(&magnet) {
+        Some(magnet.trim().to_string())
+    } else {
+        None
     }
 }
 

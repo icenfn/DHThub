@@ -345,6 +345,7 @@ onMounted(async () => {
             :model-value="site.enabled"
             color="primary"
             density="compact"
+            size="small"
             hide-details
             inset
             class="row__switch"

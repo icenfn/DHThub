@@ -93,7 +93,6 @@ onMounted(async () => {
         single-line
         clearable
         placeholder="输入关键词：电影 / 剧集 / 游戏"
-        prepend-inner-icon="mdi-magnify"
         enterkeyhint="search"
         autocomplete="off"
         @keyup.enter="doSearch()"
@@ -104,7 +103,8 @@ onMounted(async () => {
             color="primary"
             variant="flat"
             size="small"
-            rounded="circle"
+            rounded="pill"
+            class="home__go"
             :disabled="!canSearch"
             title="搜索"
             @click="doSearch()"
@@ -231,6 +231,8 @@ onMounted(async () => {
 
 .home__field :deep(.v-field) {
   background: rgb(var(--v-theme-surface-container));
+  /* 尾部内嵌搜索按钮留出空隙 */
+  padding-inline-end: 4px;
 }
 
 .home__field :deep(.v-field--focused) {
@@ -259,5 +261,13 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+}
+
+/* 搜索按钮：与输入框同高、同圆角，内嵌在字段尾部 */
+.home__go {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px;
+  margin-inline-end: 4px;
 }
 </style>

@@ -380,6 +380,7 @@ onMounted(async () => {
             :model-value="autoCheck"
             color="primary"
             density="compact"
+            size="small"
             hide-details
             inset
             class="row__switch"
@@ -904,17 +905,6 @@ onMounted(async () => {
 
 .row__switch :deep(.v-selection-control) {
   min-height: 40px;
-}
-
-.row__switch :deep(.v-switch__track) {
-  height: 32px;
-  min-height: 32px;
-  width: 52px;
-}
-
-.row__switch :deep(.v-switch__thumb) {
-  height: 24px;
-  width: 24px;
 }
 
 /* ---------- 延迟标签 ---------- */

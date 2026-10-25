@@ -5,15 +5,14 @@
 // 顶部 chip 只是对已得结果做客户端过滤，切换平台不会再发一次请求。
 //
 // 交互约定：
-//   - chip 单击：单选该源（再次单击同一个唯一选中项 = 取消，回到「全部」）；
-//   - chip 长按（移动端 480ms）/ 右键（PC）：把该源「加入」选中集合，即进入多选；
-//     没有额外的「完成」按钮，多选状态由选中项数量自然表达。
+//   - chip-group 单选：选中某个源只看该源结果，选中「聚合」看全部；
+//     再次点击当前项取消选择，自动回到「聚合」。
 //   - 排序：按钮 + 对话框选择。
 //   - 结果行：点击进入独立「资源详情」页。本页由 App.vue 的 <keep-alive> 缓存，
 //     因此从详情页返回时不会重新请求，列表 / 滚动 / 筛选 / 排序状态都保留。
 import { computed, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useDebounceFn, useEventListener } from '@vueuse/core'
+import { useDebounceFn } from '@vueuse/core'
 import { invoke, isTauri } from '../lib/tauri'
 import { useSitesStore } from '../stores/sites'
 import { settings } from '../stores/settings'
@@ -28,137 +27,23 @@ const sitesStore = useSitesStore()
 const keyword = ref(String(route.query.k ?? ''))
 const searchedKeyword = ref('')
 
-// ---------- 搜索源（纯客户端过滤） ----------
-const engineIds = ref<string[]>(['all'])
+// ---------- 搜索源（纯客户端过滤，单选） ----------
+const engineId = ref('all')
 const engineOptions = computed(() => [
   { id: 'all', name: '聚合' },
   ...sitesStore.enabledSites.map((s) => ({ id: s.id ?? '', name: s.name })),
 ])
 
-const isAll = computed(() => engineIds.value.includes('all') || engineIds.value.length === 0)
-const modeLabel = computed(() => {
-  if (isAll.value) return '聚合合并'
-  const n = engineIds.value.length
-  return n === 1 ? '单源筛选' : `多源筛选 · ${n} 站`
-})
+const isAll = computed(() => engineId.value === 'all')
+const modeLabel = computed(() => (isAll.value ? '聚合合并' : '单源筛选'))
 
-/** 单选：选中该源；再次单击已选中的唯一源则取消回「全部」 */
-function selectSingle(id: string) {
-  if (id === 'all') {
-    engineIds.value = ['all']
-    return
+/** chip-group 单选变更：再次点击当前项则回到「聚合」 */
+function onEngineChange(next: unknown) {
+  const v = typeof next === 'string' ? next : ''
+  if (!v || v === engineId.value) {
+    if (v && v !== 'all' && engineId.value === v) return
   }
-  if (engineIds.value.length === 1 && engineIds.value[0] === id) {
-    engineIds.value = ['all']
-    return
-  }
-  engineIds.value = [id]
-}
-
-/** 多选模式：长按 / 右键进入，此时单击即加入或移出选中集合，需点「完成」退出 */
-const multiMode = ref(false)
-
-/** 多选模式下的切换：已选中则移出，未选中则加入 */
-function toggleSelection(id: string) {
-  if (id === 'all') {
-    engineIds.value = ['all']
-    return
-  }
-  const cur = engineIds.value.filter((x) => x !== 'all')
-  const at = cur.indexOf(id)
-  if (at >= 0) cur.splice(at, 1)
-  else cur.push(id)
-  engineIds.value = cur.length ? cur : ['all']
-}
-
-/** 结束多选：退出多选模式（选中结果保留），恢复单击单选行为 */
-function finishMulti() {
-  multiMode.value = false
-  longPressFired = false
-}
-
-/** 长按 / 右键：进入多选并把该源加入选中集合 */
-function addToSelection(id: string) {
-  if (id === 'all') {
-    engineIds.value = ['all']
-    return
-  }
-  const cur = engineIds.value.filter((x) => x !== 'all')
-  if (!cur.includes(id)) cur.push(id)
-  engineIds.value = cur.length ? cur : ['all']
-}
-
-/** v-chip-group 的变更入口：先比对出「本次切换的那个 chip」，再套用互斥规则。
- *  - 切到「全部」：清空其它选中，只保留全部
- *  - 切到其它源：取消「全部」；多选模式下在已选集合里增删，单选模式下独占
- */
-function onGroupChange(next: string[] | undefined) {
-  const prev = engineIds.value
-  const arr = Array.isArray(next) ? next.filter(Boolean) : []
-  // 找出本次被切换（新增或移除）的源
-  const added = arr.find((id) => !prev.includes(id))
-  const removed = prev.find((id) => !arr.includes(id) && id !== 'all')
-  const toggled = added ?? removed ?? ''
-  if (!toggled) {
-    engineIds.value = prev
-    return
-  }
-  if (toggled === 'all') {
-    // 选「全部」即互斥：其它源的选中状态一律清掉
-    engineIds.value = ['all']
-    return
-  }
-  if (multiMode.value) toggleSelection(toggled)
-  else selectSingle(toggled)
-}
-
-// ---------- 长按 / 右键 ----------
-const LONG_PRESS_MS = 480
-let pressTimer: ReturnType<typeof setTimeout> | null = null
-let longPressFired = false
-let pressStartAt = 0
-
-function clearPressTimer() {
-  if (pressTimer) {
-    clearTimeout(pressTimer)
-    pressTimer = null
-  }
-}
-
-function onChipPointerDown(id: string) {
-  longPressFired = false
-  pressStartAt = Date.now()
-  clearPressTimer()
-  pressTimer = setTimeout(() => {
-    longPressFired = true
-    multiMode.value = true
-    addToSelection(id)
-  }, LONG_PRESS_MS)
-}
-
-function onChipPointerUp() {
-  clearPressTimer()
-}
-
-function onChipClick(id: string) {
-  if (longPressFired) {
-    longPressFired = false
-    return
-  }
-  if (Date.now() - pressStartAt > LONG_PRESS_MS) return
-  if (multiMode.value) {
-    toggleSelection(id)
-    return
-  }
-  selectSingle(id)
-}
-
-function onChipContextMenu(e: MouseEvent, id: string) {
-  e.preventDefault()
-  clearPressTimer()
-  longPressFired = true
-  multiMode.value = true
-  addToSelection(id)
+  engineId.value = v || 'all'
 }
 
 // ---------- 搜索状态 ----------
@@ -166,8 +51,6 @@ function onChipContextMenu(e: MouseEvent, id: string) {
 // 不再等全部站点搜索完成后才一次性显示。
 const searching = ref(false)
 const errorMsg = ref('')
-const totalSites = ref(0)
-const finishedSites = ref(0)
 
 type MergedItem = MagnetItem & { siteId: string; siteName: string; isDefault: boolean }
 
@@ -184,7 +67,24 @@ const PAGE_SIZE = 20
 const successCount = computed(() => outcomes.value.filter((o) => o.success).length)
 const failedSites = computed(() => outcomes.value.filter((o) => !o.success))
 
-/** 轮询交错合并全部桶（同源同磁力/链接去重） */
+/** 从磁力链接里取 btih，用于跨站点去重（同一资源常被多个站点收录） */
+function btihOf(m: string): string {
+  const t = m.trim()
+  if (!t.toLowerCase().startsWith('magnet:?')) return ''
+  const m1 = t.match(/xt=urn:btih:([a-z0-9]+)/i)
+  return m1 ? m1[1].toLowerCase() : ''
+}
+
+/** 去重键：btih > 来源地址 > 标题（同一资源只保留首次出现的那条） */
+function dedupKey(it: MergedItem): string {
+  const h = btihOf(it.magnet)
+  if (h) return `btih:${h}`
+  const u = (it.url || '').trim()
+  if (u) return `url:${u}`
+  return `t:${(it.title || '').trim().toLowerCase()}|${it.size || ''}`
+}
+
+/** 轮询交错合并全部桶（跨站点去重） */
 const allItems = computed<MergedItem[]>(() => {
   const buckets = bucketOrder.value.map((k) => bucketMap.value[k] ?? [])
   const out: MergedItem[] = []
@@ -194,7 +94,7 @@ const allItems = computed<MergedItem[]>(() => {
     for (const b of buckets) {
       const it = b[i]
       if (!it) continue
-      const key = `${it.siteId}|${it.magnet || it.url || it.title}`
+      const key = dedupKey(it)
       if (seen.has(key)) continue
       seen.add(key)
       out.push(it)
@@ -206,8 +106,7 @@ const allItems = computed<MergedItem[]>(() => {
 /** 按当前 chip 选择过滤（不发请求） */
 const filteredItems = computed<MergedItem[]>(() => {
   if (isAll.value) return allItems.value
-  const set = new Set(engineIds.value)
-  return allItems.value.filter((i) => set.has(i.siteId))
+  return allItems.value.filter((i) => i.siteId === engineId.value)
 })
 
 // ---------- 排序 ----------
@@ -262,6 +161,7 @@ const sortedItems = computed<MergedItem[]>(() => {
 
 // ---------- 分页 ----------
 const page = ref(1)
+// 已加载条数能填满的页数；还有更多数据时再多给 1 页作为「继续加载」入口
 const totalPages = computed(() => {
   const loaded = Math.max(1, Math.ceil(sortedItems.value.length / PAGE_SIZE))
   return sourcesExhausted.value ? loaded : loaded + 1
@@ -271,12 +171,9 @@ const pagedItems = computed(() =>
 )
 
 // 切换筛选后页码可能越界，回到第 1 页
-watch(
-  () => engineIds.value.join(','),
-  () => {
-    page.value = 1
-  },
-)
+watch(engineId, () => {
+  page.value = 1
+})
 
 /** 把一个站点的结果放进对应桶，并更新统计 */
 function applyOutcome(o: SiteOutcome, pageNo: number) {
@@ -323,7 +220,6 @@ async function runStreamPage(k: string, pageNo: number): Promise<void> {
     'search-site',
     (ev) => {
       if (ev.payload.streamId !== streamId) return
-      finishedSites.value += 1
       applyOutcome(ev.payload.outcome, pageNo)
     },
   )
@@ -331,7 +227,7 @@ async function runStreamPage(k: string, pageNo: number): Promise<void> {
     if (ev.payload.streamId === streamId) resolveDone?.()
   })
   try {
-    totalSites.value = await invoke<number>(
+    await invoke<number>(
       'search_stream',
       { keyword: k, siteIds: undefined, page: pageNo, dns, streamId },
       30000,
@@ -360,11 +256,10 @@ async function doSearch(kw = keyword.value) {
   outcomes.value = []
   bucketOrder.value = []
   bucketMap.value = {}
-  finishedSites.value = 0
-  totalSites.value = 0
   sourcesExhausted.value = false
   sourcePage.value = 1
   page.value = 1
+  savedScrollTop = 0
   try {
     await runStreamPage(k, 1)
     if (allItems.value.length === 0) {
@@ -403,9 +298,21 @@ async function ensureLoaded(targetPage: number): Promise<boolean> {
   }
 }
 
-const listRef = ref<HTMLElement | null>(null)
+// 记录主页面的滚动位置：从详情页返回时用于复位（keep-alive 只保住组件状态，
+// 内层滚动容器一旦被重建就会回到顶部）
+const mainRef = ref<HTMLElement | null>(null)
+let savedScrollTop = 0
+
+function rememberScroll() {
+  savedScrollTop = mainRef.value?.scrollTop ?? 0
+}
+
+const restoreScroll = useDebounceFn(() => {
+  if (mainRef.value && savedScrollTop > 0) mainRef.value.scrollTop = savedScrollTop
+}, 30)
+
 const scrollToList = useDebounceFn(() => {
-  listRef.value?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  if (mainRef.value) mainRef.value.scrollTop = 0
 }, 80)
 
 async function goPage(p: number) {
@@ -420,10 +327,7 @@ async function goPage(p: number) {
 function submit() {
   const k = keyword.value.trim()
   if (!k) return
-  router.replace({
-    path: '/search',
-    query: { k, e: engineIds.value.filter((x) => x !== 'all').join(',') || undefined },
-  })
+  router.replace({ path: '/search', query: { k } })
   if (k !== searchedKeyword.value) void doSearch(k)
 }
 
@@ -438,6 +342,7 @@ onActivated(() => {
   const nonce = String(route.query.t ?? '')
   if (nonce && nonce !== lastNonce) {
     lastNonce = nonce
+    savedScrollTop = 0
     if (k) {
       keyword.value = k
       void doSearch(k)
@@ -447,7 +352,10 @@ onActivated(() => {
   if (k && k !== searchedKeyword.value) {
     keyword.value = k
     void doSearch(k)
+    return
   }
+  // 从详情页返回：保持筛选与列表，滚动回原位置
+  restoreScroll()
 })
 
 // 首次进入 / 直接带参数打开
@@ -478,15 +386,12 @@ function openDetail(item: MergedItem) {
       m: item.magnet || '',
       u: item.url || '',
       src: item.siteName,
+      // 站点 ID：详情页据此按需回源解析真实磁力
+      sid: item.siteId || '',
     },
   })
 }
 
-// PC：把浏览器的右键菜单替换为「加入多选」，避免长按在桌面端不可用的体验差异
-const chipsRef = ref<HTMLElement | null>(null)
-useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
-  e.preventDefault()
-})
 </script>
 
 <template>
@@ -512,57 +417,26 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
         class="sr-go"
         color="primary"
         variant="flat"
-        rounded="pill"
+        rounded="circle"
+        icon
         :disabled="!keyword.trim() || searching"
         title="搜索"
+        aria-label="搜索"
         @click="submit"
       >
         <v-progress-circular v-if="searching" indeterminate size="16" width="2" color="on-primary" />
-        <template v-else>
-          <v-icon icon="mdi-magnify" size="18" start />
-          搜索
-        </template>
+        <v-icon v-else icon="mdi-magnify" size="20" />
       </v-btn>
     </v-toolbar>
 
-    <!-- 多选模式工具条：长按 / 右键进入，点「完成」退出并保留选中结果 -->
-    <div v-if="multiMode" class="multi-bar">
-      <v-icon icon="mdi-checkbox-multiple-marked-outline" size="15" color="primary" />
-      <span class="multi-bar__text">
-        多选筛选 · 已选
-        <strong>{{ engineIds.includes('all') ? '聚合' : engineIds.length + ' 个来源' }}</strong>
-      </span>
-      <v-btn
-        size="x-small"
-        variant="text"
-        rounded="pill"
-        color="primary"
-        @click="engineIds = ['all']"
-      >
-        重置
-      </v-btn>
-      <v-btn
-        size="x-small"
-        color="primary"
-        variant="flat"
-        rounded="pill"
-        prepend-icon="mdi-check"
-        class="multi-bar__done"
-        @click="finishMulti"
-      >
-        完成
-      </v-btn>
-    </div>
-
-    <!-- 搜索源 chip：单击单选 / 取消，长按或右键进入多选 -->
-    <div ref="chipsRef" class="sr-engines">
+    <!-- 搜索源 chip：单选，仅作客户端过滤 -->
+    <div class="sr-engines">
       <v-chip-group
-        :model-value="engineIds"
-        multiple
+        :model-value="engineId"
         :column="false"
         class="sr-engines__track"
         selected-class="echip--on"
-        @update:model-value="(v: unknown) => onGroupChange(v as string[] | undefined)"
+        @update:model-value="onEngineChange"
       >
         <v-chip
           v-for="opt in engineOptions"
@@ -571,15 +445,7 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
           variant="outlined"
           size="small"
           class="echip"
-          :prepend-icon="
-            engineIds.includes(opt.id) ? 'mdi-check' : multiMode ? 'mdi-plus' : undefined
-          "
-          @pointerdown="onChipPointerDown(opt.id)"
-          @pointerup="onChipPointerUp"
-          @pointerleave="onChipPointerUp"
-          @pointercancel="onChipPointerUp"
-          @click.stop="onChipClick(opt.id)"
-          @contextmenu="onChipContextMenu($event, opt.id)"
+          :prepend-icon="engineId === opt.id ? 'mdi-check' : undefined"
         >
           {{ opt.name }}
         </v-chip>
@@ -587,7 +453,7 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
     </div>
 
     <!-- 结果区 -->
-    <main class="sr-main">
+    <main ref="mainRef" class="sr-main" @scroll.passive="rememberScroll">
       <template v-if="searchedKeyword">
         <!-- 摘要 + 排序 -->
         <div class="summary">
@@ -625,11 +491,9 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
           :text="errorMsg"
         />
 
-        <div v-if="searching" class="loading">
-          <v-progress-linear indeterminate color="primary" rounded height="3" />
-          <div class="loading__text">
-            {{ finishedSites }}/{{ totalSites || '?' }} 站已返回，结果实时显示
-          </div>
+        <!-- 搜索进度：屏幕中央浮层，进度文字统一由页顶摘要展示 -->
+        <div v-if="searching" class="loading-center">
+          <v-progress-circular indeterminate size="34" width="3" color="primary" />
         </div>
 
         <v-empty-state
@@ -641,7 +505,7 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
         />
 
         <template v-else>
-          <div ref="listRef" class="list">
+          <div class="list">
             <v-card
               v-for="(item, idx) in pagedItems"
               :key="`${item.siteId}-${idx}`"
@@ -686,7 +550,7 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
             </v-card>
           </div>
 
-          <!-- 分页：翻页自动补齐数据，不再需要「加载更多」 -->
+          <!-- 分页：翻页时按需向后端补齐下一页数据 -->
           <v-pagination
             v-if="totalPages > 1"
             class="pager"
@@ -786,48 +650,12 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
 
 .sr-go {
   flex: 0 0 auto;
+  width: 40px !important;
   height: 40px !important;
-  min-width: 84px;
-  padding: 0 14px;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 600;
-  font-size: 0.82rem;
+  min-width: 40px;
 }
 
 /* ---------- 搜索源 chip ---------- */
-.multi-bar {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 0 14px 6px;
-  padding: 6px 8px 6px 10px;
-  border-radius: 12px;
-  background: rgba(var(--v-theme-primary), 0.1);
-  border: 1px solid rgba(var(--v-theme-primary), 0.28);
-}
-
-.multi-bar__text {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 0.72rem;
-  color: rgb(var(--v-theme-on-surface-variant));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.multi-bar__text strong {
-  color: rgb(var(--v-theme-primary));
-  font-weight: 700;
-}
-
-.multi-bar__done {
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 600;
-}
-
 .sr-engines {
   flex-shrink: 0;
   padding: 0 12px;
@@ -871,6 +699,8 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
   padding: 12px 14px calc(20px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
@@ -915,15 +745,15 @@ useEventListener(chipsRef, 'contextmenu', (e: MouseEvent) => {
   text-transform: none;
 }
 
-.loading {
-  padding: 22px 0;
-}
-
-.loading__text {
-  margin-top: 10px;
-  font-size: 0.76rem;
-  color: rgb(var(--v-theme-on-surface-variant));
-  text-align: center;
+/* 搜索进度：浮在屏幕中央，不占列表布局 */
+.loading-center {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
 }
 
 .empty {

@@ -25,6 +25,8 @@ const date = ref(String(route.query.d ?? ''))
 const rawMagnet = ref(String(route.query.m ?? ''))
 const rawUrl = ref(String(route.query.u ?? ''))
 const source = ref(String(route.query.src ?? ''))
+/** 来源站点 ID：用于进入详情页时按需回源解析真实磁力 */
+const siteId = ref(String(route.query.sid ?? ''))
 const keyword = ref(String(route.query.k ?? ''))
 
 /** 是否是可用的磁力链接（magnet:? 且带 btih） */
@@ -33,8 +35,39 @@ function isMagnet(s: string): boolean {
   return t.startsWith('magnet:?') && t.includes('xt=urn:btih')
 }
 
-/** 真正的磁力链接：只有合法磁力才采用 */
-const magnet = computed(() => (isMagnet(rawMagnet.value) ? rawMagnet.value.trim() : ''))
+/** 解析得到的磁力（进入详情页时按需回源，避免搜索阶段抓详情页） */
+const resolvedMagnet = ref('')
+const resolvingMagnet = ref(false)
+
+/** 真正的磁力链接：优先用列表里带的合法磁力，其次用按需解析结果 */
+const magnet = computed(() => {
+  if (isMagnet(rawMagnet.value)) return rawMagnet.value.trim()
+  return resolvedMagnet.value
+})
+
+/**
+ * 列表页没有真实磁力时（磁力狗 / ØMagnet 等把 magnet 放在详情页），
+ * 进入详情页后回源解析一次。
+ */
+async function resolveMagnet() {
+  if (magnet.value || resolvingMagnet.value) return
+  const detailUrl = rawUrl.value.trim() || rawMagnet.value.trim()
+  if (!detailUrl || !siteId.value || !isTauri) return
+  resolvingMagnet.value = true
+  try {
+    const dns = String(route.query.dns ?? '')
+    const found = await invoke<string | null>(
+      'resolve_magnet',
+      { siteId: siteId.value, url: detailUrl, dns },
+      20000,
+    )
+    if (found && isMagnet(found)) resolvedMagnet.value = found.trim()
+  } catch {
+    // 解析失败不阻塞页面，仅不展示磁力
+  } finally {
+    resolvingMagnet.value = false
+  }
+}
 
 /** 来源页面：短链 / 普通地址（后端已补全为绝对地址） */
 const pageUrl = computed(() => {
@@ -281,13 +314,16 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   if (e.key === 'Escape') back()
 })
 
-onMounted(() => {
+onMounted(async () => {
   // 记录浏览历史：历史页读取的正是 browse 类型
   void invoke('add_history', {
     kind: 'browse',
     keyword: keyword.value || title.value,
     magnet: magnet.value || pageUrl.value,
   }).catch(() => undefined)
+
+  // 先按需解析真实磁力（部分站点只在详情页给 magnet），再用它去 whatslink 取截图
+  await resolveMagnet()
   void loadInfo()
 })
 </script>
@@ -325,27 +361,36 @@ onMounted(() => {
         <section class="rd-hero">
           <h1 class="rd-title selectable">{{ title || '未命名资源' }}</h1>
 
+          <!-- 统一的标签样式：同一尺寸 / 同一 tonal 变体，只用颜色区分含义 -->
           <div class="rd-badges">
             <v-chip
               v-if="size"
+              class="rd-tag"
               size="small"
               variant="tonal"
+              color="primary"
               prepend-icon="mdi-database-outline"
             >
               {{ size }}
             </v-chip>
             <v-chip
               v-if="date"
+              class="rd-tag"
               size="small"
-              variant="outlined"
+              variant="tonal"
+              color="secondary"
               prepend-icon="mdi-calendar-outline"
             >
               {{ date }}
             </v-chip>
-            <v-chip v-if="fileTypeLabel" size="small" color="primary" variant="tonal">
-              {{ fileTypeLabel }}
-            </v-chip>
-            <v-chip v-if="source" size="small" variant="text" prepend-icon="mdi-antenna">
+            <v-chip
+              v-if="source"
+              class="rd-tag"
+              size="small"
+              variant="tonal"
+              color="tertiary"
+              prepend-icon="mdi-antenna"
+            >
               {{ source }}
             </v-chip>
           </div>
@@ -433,9 +478,6 @@ onMounted(() => {
             <span class="section-label">
               <v-icon icon="mdi-information-outline" size="15" class="mr-1" />解析信息
             </span>
-            <v-chip v-if="fileTypeLabel" size="x-small" variant="tonal" color="primary">
-              {{ fileTypeLabel }}
-            </v-chip>
           </div>
 
           <dl class="rd-kv">
@@ -545,6 +587,11 @@ onMounted(() => {
   line-height: 1.5;
   color: rgb(var(--v-theme-on-surface));
   word-break: break-word;
+}
+
+.rd-tag {
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .rd-badges {

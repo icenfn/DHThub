@@ -206,6 +206,35 @@ async fn search_stream(
     Ok(total)
 }
 
+/// 按需解析单条资源的真实磁力（进入详情页时才调用）
+///
+/// 很多站点（磁力狗、ØMagnet）列表页只给详情页链接，真实 magnet 在详情页里。
+/// 搜索阶段不再回源详情页；前端打开资源详情时才调用本命令，只抓一个页面。
+#[tauri::command]
+async fn resolve_magnet(
+    state: tauri::State<'_, AppState>,
+    site_id: String,
+    url: String,
+    dns: String,
+) -> Result<Option<String>, String> {
+    if url.trim().is_empty() {
+        return Ok(None);
+    }
+    let sites = state.sites.all_sites().await?;
+    let site = sites
+        .into_iter()
+        .find(|s| s.id.as_deref().unwrap_or("") == site_id)
+        .ok_or_else(|| format!("未找到搜索源: {site_id}"))?;
+    if site.expression_model.magnet_detail.is_none() {
+        return Ok(None);
+    }
+    let client = match dns.trim() {
+        d if d.is_empty() => state.http.clone(),
+        d => dns::build_client(d)?,
+    };
+    Ok(search::resolve_one_magnet(&client, &site, &url).await)
+}
+
 /// 退出应用（Android 返回键兜底：无弹窗且无历史时调用）
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
@@ -320,6 +349,7 @@ pub fn run() {
             reset_sites,
             search_sites,
             search_stream,
+            resolve_magnet,
             test_site,
             exit_app,
             add_history,
