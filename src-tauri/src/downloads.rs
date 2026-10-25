@@ -134,10 +134,17 @@ impl DownloadManager {
     }
 
     /// 在会话内按 id 查找任务句柄
+    ///
+    /// `with_torrents` 回传的是 `&mut dyn Iterator`（未满足 `Sized`），
+    /// 因此不能直接用 `Iterator::find`，这里改为显式循环。
     fn find(session: &Arc<Session>, id: usize) -> Option<Arc<ManagedTorrent>> {
         session.with_torrents(|iter| {
-            iter.find(|(tid, _)| *tid == id)
-                .map(|(_, handle)| handle.clone())
+            for (tid, handle) in iter {
+                if tid == id {
+                    return Some(handle.clone());
+                }
+            }
+            None
         })
     }
 }
