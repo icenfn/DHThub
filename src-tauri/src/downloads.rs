@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use librqbit::api::TorrentIdOrHash;
 use librqbit::dht::DhtPersistenceConfig;
@@ -25,6 +26,49 @@ use librqbit::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+
+/// 内置公共 tracker 兜底列表。
+///
+/// 磁力链接里自带的 `tr=` 参数经常是失效或已被墙的 tracker，此时若只依赖
+/// 磁力自带的 tracker 与 DHT，解析元数据（list_only）就会长时间等不到 peer，
+/// 表现就是「解析超时」。FluxDown 等下载器同样是靠内置的一批公共 tracker
+/// 兜底才显得快，这里补齐同类行为。
+const DEFAULT_PUBLIC_TRACKERS: &[&str] = &[
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.tracker.cl:1337/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.openbittorrent.com:6969/announce",
+    "udp://opentracker.i2p.rocks:6969/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "udp://tracker.dler.org:6969/announce",
+    "udp://tracker.tiny-vps.com:6969/announce",
+    "udp://tracker.bittor.pw:1337/announce",
+    "udp://tracker.qu.ax:6969/announce",
+    "udp://ttk2.nbaonlineservice.com:6969/announce",
+    "udp://tracker-udp.gbitt.info:80/announce",
+    "http://tracker.opentrackr.org:1337/announce",
+    "http://tracker.openbittorrent.com:6969/announce",
+    "https://tracker.tamersunion.org:443/announce",
+    "https://tracker.gbitt.info:443/announce",
+    "https://tracker.zhuqiy.com:443/announce",
+];
+
+/// 公共 DHT 引导节点。
+///
+/// librqbit 自带默认引导节点，但部分网络环境下不可达；显式补充一批长期可用的
+/// 主节点，可显著提升首次解析时拿到 peer 的概率与速度。
+const DEFAULT_DHT_BOOTSTRAP: &[&str] = &[
+    "router.bittorrent.com:6881",
+    "router.utorrent.com:6881",
+    "dht.transmissionbt.com:6881",
+    "dht.libtorrent.org:25401",
+    "dht.aelitis.com:6881",
+];
+
+/// 解析磁力元数据的超时上限（秒）。
+/// 超过该时间仍未拿到元数据就返回明确错误，避免前端一直转圈。
+const PROBE_TIMEOUT_SECS: u64 = 75;
 
 /// 下载内核配置（由前端设置页下发；限速为 0 表示不限速）
 #[derive(Debug, Clone, Deserialize)]
@@ -139,6 +183,10 @@ impl DownloadManager {
         // 避免 directories crate 在 Android 上解析项目目录失败
         let dht = if cfg.dht_enabled {
             Some(DhtSessionConfig {
+                // 显式给出公共引导节点，避免默认节点不可达时 DHT 一直找不到 peer
+                bootstrap_addrs: Some(
+                    DEFAULT_DHT_BOOTSTRAP.iter().map(|s| s.to_string()).collect(),
+                ),
                 persistence: Some(DhtPersistenceConfig {
                     config_filename: Some(self.state_dir.join("dht-state.json")),
                     ..Default::default()
@@ -161,9 +209,11 @@ impl DownloadManager {
             ..Default::default()
         };
 
-        let trackers: HashSet<url::Url> = cfg
-            .extra_trackers
+        // tracker：先放内置公共兜底，再并入用户自定义（去重由 HashSet 完成）。
+        // 这一步是解决「解析超时」的关键：磁力自带的 tracker 往往已失效。
+        let trackers: HashSet<url::Url> = DEFAULT_PUBLIC_TRACKERS
             .iter()
+            .chain(cfg.extra_trackers.iter().map(|t| t.as_str()))
             .filter_map(|t| t.trim().parse::<url::Url>().ok())
             .collect();
 
@@ -214,10 +264,24 @@ impl DownloadManager {
             list_only: true,
             ..Default::default()
         };
-        let resp = session
-            .add_torrent(AddTorrent::Url(magnet.into()), Some(opts))
-            .await
-            .map_err(|e| format!("解析磁力失败: {e:#}"))?;
+        // 解析同样需要连 tracker / DHT 找 peer 拿元数据，必须加超时兜底，
+        // 否则链路不通时会一直挂起，前端只能报「请求超时」。
+        let resp = match tokio::time::timeout(
+            Duration::from_secs(PROBE_TIMEOUT_SECS),
+            session.add_torrent(AddTorrent::Url(magnet.into()), Some(opts)),
+        )
+        .await
+        {
+            Err(_) => {
+                return Err(format!(
+                    "解析超时（超过 {PROBE_TIMEOUT_SECS} 秒未获取到种子信息）。\
+                     通常是 tracker 或 DHT 不通：请在「设置 → BitTorrent」中确认 DHT 已开启，\
+                     并在追踪器列表里补充可用的 tracker 后重试。"
+                ))
+            }
+            Ok(Err(e)) => return Err(format!("解析磁力失败: {e:#}")),
+            Ok(Ok(r)) => r,
+        };
         let list = match resp {
             AddTorrentResponse::ListOnly(list) => list,
             // 已在任务列表中的种子：直接复用其元信息列出文件

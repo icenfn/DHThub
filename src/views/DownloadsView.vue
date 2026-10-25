@@ -146,7 +146,9 @@ async function doProbe() {
   probing.value = true
   probingInfo.value = '正在解析种子…'
   try {
-    const r = await invoke<ProbeResult>('probe_download', { magnet: m })
+    // 解析需要连 tracker / DHT 等 peer 回传元数据，耗时明显长于普通 IPC。
+    // 这里给足 90s（后端自身 75s 会先返回更具体的错误），避免过早报"请求超时"。
+    const r = await invoke<ProbeResult>('probe_download', { magnet: m }, 90000)
     probe.value = r
     // 默认全选，用户可取消不需要的文件
     selected.value = new Set(r.files.map((f) => f.id))
@@ -154,7 +156,13 @@ async function doProbe() {
     if (r.files.length === 0) toast.info('该种子未包含文件信息')
   } catch (e) {
     probingInfo.value = ''
-    toast.error(String(e))
+    const msg = String(e)
+    // 「请求超时」多是对端链路慢，给出可操作的提示而不是干巴巴的超时字样
+    if (msg.includes('超时')) {
+      toast.error(msg.includes('解析超时') ? msg : '解析超时：tracker / DHT 暂未返回种子信息，请检查网络后重试')
+    } else {
+      toast.error(msg)
+    }
   } finally {
     probing.value = false
   }
