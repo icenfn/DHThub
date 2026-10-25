@@ -6,6 +6,7 @@ import { useTheme } from 'vuetify'
 import { useMediaQuery } from '@vueuse/core'
 import { invoke } from '@tauri-apps/api/core'
 import { settings } from './stores/settings'
+import { PRISTINE_COLORS } from './plugins/vuetify'
 import { isTauri } from './lib/tauri'
 import { closeTopOverlay, pushOverlay } from './lib/overlay'
 import { checkUpdate, openReleasePage, updateHasNew, updateMsg, updateToast } from './lib/update'
@@ -76,15 +77,20 @@ const prefersDark = useMediaQuery('(prefers-color-scheme: dark)')
 async function applyTheme() {
   await settings.ready()
   const mode = settings.get('theme')
-  if (mode === 'system') {
-    theme.change(prefersDark.value ? 'dark' : 'light')
-  } else {
-    theme.change(mode)
-  }
+  const name = mode === 'system' ? (prefersDark.value ? 'dark' : 'light') : mode
+  // 先重置为原始调色板再切换：Vuetify 会复用主题对象，
+  // 直接用上一次（深色）残留的 colors 切回浅色，按钮就会一直是灰的。
+  const target = theme.themes.value[name]
+  if (target) target.colors = { ...PRISTINE_COLORS[name] }
+  theme.change(name)
 }
 
 watch(prefersDark, (v) => {
-  if (settings.get('theme') === 'system') theme.change(v ? 'dark' : 'light')
+  if (settings.get('theme') !== 'system') return
+  const name = v ? 'dark' : 'light'
+  const target = theme.themes.value[name]
+  if (target) target.colors = { ...PRISTINE_COLORS[name] }
+  theme.change(name)
 })
 
 watch(

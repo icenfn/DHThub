@@ -1,32 +1,29 @@
 <script setup lang="ts">
-// 历史记录：浏览记录（本地存储），支持一键复制磁力 / 清空
+// 历史记录：浏览记录（本地存储）
+// - 点击任意一条进入资源详情页
+// - 页头左侧为「清空」，列表行不再提供复制按钮
 import { computed, onMounted, ref } from 'vue'
-import { useClipboard, useTimeAgo } from '@vueuse/core'
+import { useRouter } from 'vue-router'
 import { invoke } from '../lib/tauri'
 import type { HistoryEntry } from '../types'
 
 const KIND = 'browse'
+const router = useRouter()
 
 const list = ref<HistoryEntry[]>([])
 const loading = ref(false)
-const toast = ref('')
-const showToast = ref(false)
 
-const { copy } = useClipboard({ legacy: true })
-
-// 分批渲染：旧内核一次性挂载数百张卡片会直接白屏，
-// 这里每批 40 条，滚动到底部再追加
+// 分批渲染：旧内核一次性挂载数百张卡片会直接白屏
 const BATCH = 40
 const shown = ref(BATCH)
+
+const sorted = computed(() => [...list.value].sort((a, b) => b.time - a.time))
 const visible = computed(() => sorted.value.slice(0, shown.value))
 const hasMore = computed(() => shown.value < sorted.value.length)
 
 function loadMore() {
   shown.value += BATCH
 }
-
-// 历史记录按时间倒序展示（Rust 端已排序，这里再兜底一次，防止存储顺序差异）
-const sorted = computed(() => [...list.value].sort((a, b) => b.time - a.time))
 
 function fmtTime(ms: number): string {
   const d = new Date(ms)
@@ -38,9 +35,9 @@ function fmtTime(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function shortMagnet(m: string): string {
-  if (!m) return '—'
-  return m.length > 56 ? `${m.slice(0, 56)}…` : m
+function shortText(m: string): string {
+  if (!m) return ''
+  return m.length > 60 ? `${m.slice(0, 60)}…` : m
 }
 
 async function load() {
@@ -54,27 +51,28 @@ async function load() {
   }
 }
 
-async function copyMagnet(entry: HistoryEntry) {
-  if (!entry.magnet) return
-  try {
-    const mod = await import('@tauri-apps/plugin-clipboard-manager')
-    await mod.writeText(entry.magnet)
-  } catch {
-    try {
-      await copy(entry.magnet)
-    } catch {
-      return
-    }
-  }
-  toast.value = '已复制磁力链接'
-  showToast.value = true
-}
-
 async function clearAll() {
   await invoke('clear_history', { kind: KIND })
   await load()
-  toast.value = '已清空浏览记录'
-  showToast.value = true
+}
+
+/** 点击历史项：有磁力进详情页，仅有来源地址则直达来源页 */
+function openEntry(entry: HistoryEntry) {
+  const m = entry.magnet || ''
+  if (!m) return
+  if (m.toLowerCase().startsWith('magnet:')) {
+    void router.push({
+      path: '/res',
+      query: {
+        k: entry.keyword || '',
+        t: entry.keyword || '历史记录',
+        m,
+        src: '历史记录',
+      },
+    })
+  } else {
+    void router.push({ path: '/res', query: { k: entry.keyword || '', t: entry.keyword || '历史记录', u: m, src: '历史记录' } })
+  }
 }
 
 onMounted(load)
@@ -83,10 +81,9 @@ onMounted(load)
 <template>
   <div class="page-scroll">
     <div class="page-inner">
-      <!-- 页头：标题/副标题已移除（顶栏已显示页名），只保留清空入口 -->
-      <div class="head head--actions">
+      <!-- 页头：操作按钮靠左 -->
+      <div v-if="list.length" class="head">
         <v-btn
-          v-if="list.length"
           variant="outlined"
           size="small"
           rounded="pill"
@@ -118,36 +115,35 @@ onMounted(load)
           class="row"
           variant="outlined"
           rounded="lg"
+          tabindex="0"
+          @click="openEntry(entry)"
+          @keyup.enter="openEntry(entry)"
         >
           <div class="row__lead">
             <v-icon icon="mdi-eye-outline" size="17" color="primary" />
           </div>
           <div class="row__body">
             <div class="row__title">{{ entry.keyword || '—' }}</div>
-            <div class="row__magnet mono">{{ shortMagnet(entry.magnet) }}</div>
+            <div class="row__magnet mono">{{ shortText(entry.magnet) }}</div>
           </div>
           <div class="row__side">
             <span class="row__time">{{ fmtTime(entry.time) }}</span>
-            <v-btn
-              icon="mdi-content-copy"
-              variant="text"
-              size="x-small"
-              title="复制磁力"
-              @click="copyMagnet(entry)"
-            />
+            <v-icon icon="mdi-chevron-right" size="18" class="row__chev" />
           </div>
         </v-card>
-      </div>
 
-      <v-snackbar
-        v-model="showToast"
-        location="bottom"
-        color="inverse-surface"
-        rounded="lg"
-        :timeout="2000"
-      >
-        {{ toast }}
-      </v-snackbar>
+        <v-btn
+          v-if="hasMore"
+          variant="tonal"
+          rounded="pill"
+          size="small"
+          block
+          class="morebtn"
+          @click="loadMore"
+        >
+          加载更多（剩余 {{ sorted.length - shown }} 条）
+        </v-btn>
+      </div>
     </div>
   </div>
 </template>
@@ -156,30 +152,9 @@ onMounted(load)
 .head {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
-  margin-bottom: 14px;
-}
-
-.head__text {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.head__title {
-  font-size: 1.02rem;
-  font-weight: 700;
-  color: rgb(var(--v-theme-on-surface));
-}
-
-.head__sub {
-  margin-top: 2px;
-  font-size: 0.72rem;
-  color: rgb(var(--v-theme-on-surface-variant));
-}
-
-.head--actions {
-  justify-content: flex-end;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .head__btn {
@@ -187,12 +162,10 @@ onMounted(load)
   text-transform: none;
 }
 
-/* ---------- 空态 ---------- */
 .empty {
   padding: 44px 16px;
 }
 
-/* ---------- 列表 ---------- */
 .list {
   display: flex;
   flex-direction: column;
@@ -203,24 +176,19 @@ onMounted(load)
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 11px 12px;
+  cursor: pointer;
   border-color: rgba(var(--v-border-color), var(--v-border-opacity));
-  background: rgb(var(--v-theme-surface));
 }
 
-.row + .row {
-  margin-top: 8px;
+.row:active {
+  background: rgb(var(--v-theme-surface-container));
 }
 
 .row__lead {
-  flex-shrink: 0;
-  display: inline-flex;
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: rgba(var(--v-theme-primary), 0.12);
 }
 
 .row__body {
@@ -229,7 +197,7 @@ onMounted(load)
 }
 
 .row__title {
-  font-size: 0.84rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: rgb(var(--v-theme-on-surface));
   overflow: hidden;
@@ -239,7 +207,8 @@ onMounted(load)
 
 .row__magnet {
   margin-top: 3px;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
   color: rgb(var(--v-theme-on-surface-variant));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -247,16 +216,21 @@ onMounted(load)
 }
 
 .row__side {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .row__time {
   font-size: 0.68rem;
   color: rgb(var(--v-theme-on-surface-variant));
   white-space: nowrap;
+}
+
+.row__chev {
+  color: rgb(var(--v-theme-on-surface-variant));
+  opacity: 0.7;
 }
 
 .morebtn {

@@ -29,10 +29,28 @@ const searchedKeyword = ref('')
 
 // ---------- 搜索源（纯客户端过滤，单选） ----------
 const engineId = ref('all')
-const engineOptions = computed(() => [
-  { id: 'all', name: '聚合' },
-  ...sitesStore.enabledSites.map((s) => ({ id: s.id ?? '', name: s.name })),
-])
+// 每个源的返回状态：失败标红、0 结果不显示，聚合项常驻
+const siteState = computed<Record<string, 'ok' | 'fail' | 'empty'>>(() => {
+  const map: Record<string, 'ok' | 'fail' | 'empty'> = {}
+  for (const o of outcomes.value) {
+    if (!o.success) map[o.site_id] = 'fail'
+    else map[o.site_id] = o.items.length > 0 ? 'ok' : 'empty'
+  }
+  return map
+})
+
+const engineOptions = computed(() => {
+  const list = [
+    { id: 'all', name: '聚合', state: 'ok' as const },
+    ...sitesStore.enabledSites.map((s) => {
+      const id = s.id ?? ''
+      return { id, name: s.name, state: siteState.value[id] ?? ('ok' as const) }
+    }),
+  ]
+  // 已搜过且结果为 0 的源不显示；失败与正常的源保留
+  const searched = Object.keys(siteState.value).length > 0
+  return list.filter((o) => o.id === 'all' || !searched || o.state !== 'empty')
+})
 
 const isAll = computed(() => engineId.value === 'all')
 const modeLabel = computed(() => (isAll.value ? '聚合合并' : '单源筛选'))
@@ -175,6 +193,23 @@ watch(engineId, () => {
   page.value = 1
 })
 
+/** 只保留体积数值 + 单位；磁力狗等站点会把整段说明文字塞进该字段 */
+function cleanSize(raw: string | undefined | null): string {
+  const t = String(raw ?? '').trim()
+  if (!t) return ''
+  const m = t.match(/\d+(?:\.\d+)?\s*(?:TB|GB|MB|KB|B)/i)
+  return m ? m[0].replace(/\s+/g, ' ').toUpperCase() : ''
+}
+
+/** 只保留日期；抓到的整段文字里截出 YYYY-MM-DD / YYYY年MM月DD日 */
+function cleanDate(raw: string | undefined | null): string {
+  const t = String(raw ?? '').trim()
+  if (!t) return ''
+  if (t.length <= 20) return t.replace(/^(发布时间|日期|时间)[:：\s]*/, '')
+  const m = t.match(/(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})/)
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : ''
+}
+
 /** 把一个站点的结果放进对应桶，并更新统计 */
 function applyOutcome(o: SiteOutcome, pageNo: number) {
   const key = `${o.site_id || o.site_name}#${pageNo}`
@@ -185,6 +220,8 @@ function applyOutcome(o: SiteOutcome, pageNo: number) {
     ...bucketMap.value,
     [key]: o.items.map((it) => ({
       ...it,
+      size: cleanSize(it.size),
+      date: cleanDate(it.date),
       siteId: o.site_id,
       siteName: o.site_name,
       isDefault: !!o.is_default,
@@ -442,10 +479,17 @@ function openDetail(item: MergedItem) {
           v-for="opt in engineOptions"
           :key="opt.id"
           :value="opt.id"
-          variant="outlined"
+          :color="opt.state === 'fail' ? 'error' : undefined"
+          :variant="opt.state === 'fail' ? 'tonal' : 'outlined'"
           size="small"
           class="echip"
-          :prepend-icon="engineId === opt.id ? 'mdi-check' : undefined"
+          :prepend-icon="
+            engineId === opt.id
+              ? 'mdi-check'
+              : opt.state === 'fail'
+                ? 'mdi-alert-circle-outline'
+                : undefined
+          "
         >
           {{ opt.name }}
         </v-chip>

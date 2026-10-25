@@ -17,6 +17,13 @@ const router = createRouter({
       component: () => import('../views/SearchResultsView.vue'),
       meta: { title: '搜索结果' },
     },
+    // 添加自定义站点：独立整页表单（不再用弹窗）
+    {
+      path: '/site/new',
+      name: 'site-new',
+      component: () => import('../views/SiteNewView.vue'),
+      meta: { title: '添加自定义站点' },
+    },
     // 资源详情独立页面（由搜索结果点击进入）
     {
       path: '/res',

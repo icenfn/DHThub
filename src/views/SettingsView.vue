@@ -23,8 +23,6 @@ const selectedDnsId = ref('')
 const dnsSpeeds = ref<Record<string, DnsSpeedResult>>({})
 const dnsTesting = ref(false)
 const dnsTestingIds = ref<Set<string>>(new Set())
-const addDnsDialog = ref(false)
-const newDnsBase = ref('')
 
 interface DnsRow extends DnsServer {
   latencyText: string
@@ -56,8 +54,6 @@ const selectedMirrorId = ref('direct')
 const speeds = ref<Record<string, MirrorSpeedResult>>({})
 const testing = ref(false)
 const testingIds = ref<Set<string>>(new Set())
-const addMirrorDialog = ref(false)
-const newMirrorBase = ref('')
 
 interface MirrorRow extends GithubMirror {
   latencyText: string
@@ -86,14 +82,6 @@ const mirrorRows = computed<MirrorRow[]>(() =>
 function mirrorLabel(m: GithubMirror): string {
   return m.base || 'https://github.com'
 }
-
-// ---------- 弹层栈 ----------
-watch(addDnsDialog, (v, _o, onCleanup) => {
-  if (v) onCleanup(pushOverlay(() => { addDnsDialog.value = false }))
-})
-watch(addMirrorDialog, (v, _o, onCleanup) => {
-  if (v) onCleanup(pushOverlay(() => { addMirrorDialog.value = false }))
-})
 
 // ---------- 轻提示 ----------
 const toast = ref('')
@@ -175,8 +163,11 @@ async function runDnsSpeedTest() {
         }) as DnsSpeedResult,
     )
     dnsSpeeds.value = Object.fromEntries(list.map((r) => [r.id, r]))
-    const ok = list.filter((r) => r.latency != null).length
-    notice(`测速完成：${ok}/${list.length} 个 DNS 可用`)
+    const ok = list.filter((r) => r.latency != null)
+    // 自动选择最快的 DNS，无需手动挑
+    const best = ok.slice().sort((a, b) => (a.latency ?? 1e9) - (b.latency ?? 1e9))[0]
+    if (best) await selectDns(dnsServers.value.find((d) => d.id === best.id) ?? dnsServers.value[0])
+    notice(`测速完成：${ok.length}/${list.length} 个 DNS 可用${best ? `，已自动选择最快：${best.name}` : ''}`)
   } catch (e) {
     notice(String(e))
   } finally {
@@ -185,30 +176,8 @@ async function runDnsSpeedTest() {
   }
 }
 
-function openAddDns() {
-  newDnsBase.value = ''
-  addDnsDialog.value = true
-}
 
-async function addDns() {
-  try {
-    const d = await settings.addDns(newDnsBase.value)
-    newDnsBase.value = ''
-    addDnsDialog.value = false
-    await refreshDns()
-    notice(`已添加 DNS：${d.name}（${d.base}）`)
-  } catch (e) {
-    notice(String(e))
-  }
-}
 
-async function removeDns(d: DnsServer) {
-  if (d.builtin) return
-  await settings.removeDns(d.id)
-  delete dnsSpeeds.value[d.id]
-  await refreshDns()
-  notice('已删除自定义 DNS')
-}
 
 // ---------- 镜像 ----------
 async function refreshMirrors() {
@@ -241,38 +210,18 @@ async function runSpeedTest() {
     const list = mirrors.value
       .map((m) => speeds.value[m.id])
       .filter((r): r is MirrorSpeedResult => !!r)
-    const ok = list.filter((r) => r.latency != null).length
-    notice(`测速完成：${ok}/${list.length} 个镜像可用`)
+    const ok = list.filter((r) => r.latency != null)
+    const best = ok.slice().sort((a, b) => (a.latency ?? 1e9) - (b.latency ?? 1e9))[0]
+    if (best) await selectMirror(mirrors.value.find((m) => m.id === best.id) ?? mirrors.value[0])
+    notice(`测速完成：${ok.length}/${list.length} 个镜像可用${best ? `，已自动选择最快` : ''}`)
   } finally {
     testing.value = false
     testingIds.value = new Set()
   }
 }
 
-function openAddMirror() {
-  newMirrorBase.value = ''
-  addMirrorDialog.value = true
-}
 
-async function addMirror() {
-  try {
-    const m = await settings.addMirror(newMirrorBase.value)
-    newMirrorBase.value = ''
-    addMirrorDialog.value = false
-    await refreshMirrors()
-    notice(`已添加镜像：${mirrorLabel(m)}`)
-  } catch (e) {
-    notice(String(e))
-  }
-}
 
-async function removeMirror(m: GithubMirror) {
-  if (m.builtin) return
-  await settings.removeMirror(m.id)
-  delete speeds.value[m.id]
-  await refreshMirrors()
-  notice('已删除自定义镜像')
-}
 
 // ---------- 导入 / 导出 ----------
 async function doExportSettings() {
@@ -470,29 +419,10 @@ onMounted(async () => {
               >
                 {{ row.latencyText }}
               </span>
-              <v-btn
-                v-if="!row.builtin"
-                icon="mdi-delete-outline"
-                variant="text"
-                size="x-small"
-                title="删除"
-                @click.stop="removeDns(row)"
-              />
             </div>
           </div>
         </div>
 
-        <v-btn
-          class="addbtn"
-          variant="text"
-          size="small"
-          rounded="pill"
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="openAddDns"
-        >
-          添加自定义 DNS
-        </v-btn>
       </v-card>
 
       <!-- ===== GitHub 镜像 ===== -->
@@ -550,30 +480,11 @@ onMounted(async () => {
               >
                 {{ row.latencyText }}
               </span>
-              <v-btn
-                v-if="!row.builtin"
-                icon="mdi-delete-outline"
-                variant="text"
-                size="x-small"
-                title="删除镜像"
-                @click.stop="removeMirror(row)"
-              />
             </div>
           </div>
         </div>
 
         <div class="card__foot">
-          <v-btn
-            class="addbtn"
-            variant="text"
-            size="small"
-            rounded="pill"
-            color="primary"
-            prepend-icon="mdi-plus"
-            @click="openAddMirror"
-          >
-            添加自定义镜像
-          </v-btn>
           <span class="card__probe">探针：{{ MIRROR_PROBE_URL }}</span>
         </div>
       </v-card>
@@ -647,81 +558,38 @@ onMounted(async () => {
       <!-- 关于信息（原「关于页」已删除，仅保留版本号于页脚） -->
       <footer class="stfoot">DHThub · 多源磁力聚合 · v0.5.0</footer>
 
-      <!-- 添加 DNS -->
-      <v-dialog v-model="addDnsDialog" max-width="400">
-        <v-card rounded="xl" variant="flat" color="surface-container-low" border>
-          <div class="dlgbody dlgbody--tight">
-            <div class="dlgtitle">添加自定义 DNS</div>
-            <v-text-field
-              v-model="newDnsBase"
-              variant="outlined"
-              density="compact"
-              hide-details
-              placeholder="223.6.6.6 或 223.6.6.6:53"
-              class="mono-input"
-            />
-            <div class="dlghint">支持 IP 或 IP:端口，保存后可参与全部测速</div>
-          </div>
-          <v-card-actions class="dlgactions">
-            <v-btn variant="text" size="small" @click="addDnsDialog = false">取消</v-btn>
-            <v-btn
-              color="primary"
-              variant="flat"
-              size="small"
-              rounded="pill"
-              :disabled="!newDnsBase.trim()"
-              @click="addDns"
-            >
-              保存
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
-
-      <!-- 添加镜像 -->
-      <v-dialog v-model="addMirrorDialog" max-width="460">
-        <v-card rounded="xl" variant="flat" color="surface-container-low" border>
-          <div class="dlgbody dlgbody--tight">
-            <div class="dlgtitle">添加自定义 GitHub 镜像</div>
-            <v-text-field
-              v-model="newMirrorBase"
-              variant="outlined"
-              density="compact"
-              hide-details
-              placeholder="https://ghproxy.net/"
-              class="mono-input"
-            />
-            <div class="dlghint">
-              前缀代理模式：请求 GitHub 地址时自动拼接该前缀，例如
-              <span class="mono"
-                >{{ newMirrorBase || 'https://镜像地址/' }}https://api.github.com/…</span
-              >
-            </div>
-          </div>
-          <v-card-actions class="dlgactions">
-            <v-btn variant="text" size="small" @click="addMirrorDialog = false">取消</v-btn>
-            <v-btn
-              color="primary"
-              variant="flat"
-              size="small"
-              rounded="pill"
-              :disabled="!newMirrorBase.trim()"
-              @click="addMirror"
-            >
-              保存
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
-
-      <v-snackbar v-model="showToast" location="bottom" color="inverse-surface" rounded="lg" :timeout="2200">
-        {{ toast }}
-      </v-snackbar>
     </main>
   </div>
 </template>
 
 <style scoped>
+/* 设置分组不再用卡片：改为「文字标题 + 分隔线 + 列表」 */
+.card {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 4px 0 10px !important;
+  margin: 0 0 6px !important;
+  border-bottom: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.75)) !important;
+}
+
+.card:last-of-type {
+  border-bottom: 0 !important;
+}
+
+.card__head {
+  padding: 10px 2px 6px !important;
+}
+
+.card__title {
+  font-size: 0.74rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-primary)) !important;
+}
+
 /* 设置作为 swiper 的第 4 页嵌在 .pane 里，滚动交给外层 .pane。
    这里不再自建 height:100% + overflow:hidden 的嵌套滚动容器，
    否则内容会被内层容器裁剪成「折叠 / 显示不全」。 */

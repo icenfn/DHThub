@@ -2,6 +2,7 @@
 // 搜索源：订阅拉取 / 自定义站点增删改 / 启停开关 / 设默认 / 导入导出 / 重置
 // 列表每行右侧为操作按钮（点击弹出菜单），不再使用长按或右键。
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useSitesStore } from '../stores/sites'
@@ -13,6 +14,7 @@ import { pushOverlay } from '../lib/overlay'
 import type { SiteConfig } from '../types'
 
 const sitesStore = useSitesStore()
+const router = useRouter()
 const subscribeUrl = ref(settings.get('subscribeUrl'))
 const subscribing = ref(false)
 const toast = ref('')
@@ -178,11 +180,8 @@ watch(addDialog, (v, _o, onCleanup) => {
 })
 
 function openAdd() {
-  editing.value = null
-  form.value = emptyForm()
-  syncFormHelpers()
-  siteTest.value = null
-  addDialog.value = true
+  // 自定义站点改为独立路由页面：字段较多，整页填写比弹窗更可靠
+  void router.push('/site/new')
 }
 
 function openEdit(site: SiteConfig) {
@@ -754,7 +753,10 @@ onMounted(async () => {
 }
 
 .head--actions {
-  justify-content: flex-end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
   margin-bottom: 10px;
 }
 

@@ -169,6 +169,13 @@ const dark = {
   },
 }
 
+// 原始调色板快照：切主题时用它重建 colors，
+// 避免 Vuetify 复用/合并上一次主题的调色板导致按钮发灰。
+export const PRISTINE_COLORS = {
+  light: { ...light.colors },
+  dark: { ...dark.colors },
+}
+
 export default createVuetify({
   theme: {
     defaultTheme: 'light',

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// 首页框架：顶栏（仅动态标题）+ 主体为 @zebra-ui/swiper 滑动窗口内嵌 4 页
-// （搜索 / 搜索源 / 历史 / 设置），可左右滑动切换；
-// 桌面端顶部分段式 tab（v-btn-toggle），移动端底部导航（v-btn 堆叠图标 + 文字）。
-// 设置页不再是独立路由，作为 swiper 的第 4 页存在。
+// 首页框架：顶栏（居中动态标题）+ 主体为 @zebra-ui/swiper 滑动窗口内嵌 5 页
+// （搜索 / 搜索源 / 历史 / 下载 / 设置），可左右滑动切换。
+// 底部导航只放 4 个 tab（搜索源 / 历史 / 下载 / 设置），
+// 「搜索」页由底部导航正中央悬浮的圆形按钮进入。
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ZSwiper, ZSwiperItem } from '@zebra-ui/swiper'
@@ -12,18 +12,27 @@ import '@zebra-ui/swiper/index.scss'
 import HomeView from '../views/HomeView.vue'
 import SitesView from '../views/SitesView.vue'
 import HistoryView from '../views/HistoryView.vue'
+import DownloadsView from '../views/DownloadsView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import { keyboardHeight, keyboardOpen } from '../lib/insets'
 
 const route = useRoute()
 
-const tabs = [
+// 页面顺序即 swiper 下标，与底部导航/桌面分段的 index 一一对应
+const pages = [
   { title: '搜索', icon: 'mdi-text-search' },
   { title: '搜索源', icon: 'mdi-antenna' },
   { title: '历史', icon: 'mdi-history' },
+  { title: '下载', icon: 'mdi-download-outline' },
   { title: '设置', icon: 'mdi-cog-outline' },
 ]
-const titles = tabs.map((t) => t.title)
+const titles = pages.map((p) => p.title)
+
+/** 底部导航左组 */
+const navLeft = [1, 2]
+/** 底部导航右组 */
+const navRight = [3, 4]
+
 const tab = ref(0)
 const swiperRef = ref<SwiperInterface | null>(null)
 
@@ -58,16 +67,24 @@ watch(
     }
   },
 )
+
+function openSearchPage() {
+  goTab(0)
+}
+
+function openSitesPage() {
+  goTab(1)
+}
 </script>
 
 <template>
   <div class="shell" :style="shellStyle">
-    <!-- 顶栏：仅保留随 tab 变化的标题 -->
+    <!-- 顶栏：仅保留居中标题 -->
     <v-toolbar class="topbar" color="surface" flat height="auto">
       <span class="topbar__title">{{ appTitle }}</span>
     </v-toolbar>
 
-    <!-- 桌面端分段式 tab -->
+    <!-- 桌面端分段式 tab（含搜索页） -->
     <v-btn-toggle
       class="segmented"
       :model-value="tab"
@@ -80,7 +97,7 @@ watch(
       @update:model-value="(v) => typeof v === 'number' && goTab(v)"
     >
       <v-btn
-        v-for="(t, i) in tabs"
+        v-for="(t, i) in pages"
         :key="i"
         :value="i"
         :prepend-icon="t.icon"
@@ -110,27 +127,70 @@ watch(
         </z-swiper-item>
         <z-swiper-item style="height: 100%">
           <div class="pane">
+            <DownloadsView @go-sites="openSitesPage" />
+          </div>
+        </z-swiper-item>
+        <z-swiper-item style="height: 100%">
+          <div class="pane">
             <SettingsView />
           </div>
         </z-swiper-item>
       </z-swiper>
     </div>
 
-    <!-- 移动端底部导航（键盘弹出时隐藏，避免遮挡输入区） -->
+    <!-- 移动端底部导航（键盘弹出时隐藏，避免遮挡输入区）
+         4 个 tab 分列两侧，正中央悬浮圆形「搜索」按钮 -->
     <v-sheet v-show="!keyboardOpen" class="bottomnav" color="surface" flat>
+      <div class="bottomnav__group">
+        <v-btn
+          v-for="i in navLeft"
+          :key="i"
+          class="bottomnav__item"
+          :class="{ 'bottomnav__item--active': tab === i }"
+          :color="tab === i ? 'primary' : undefined"
+          variant="text"
+          stacked
+          :ripple="false"
+          @click="goTab(i)"
+        >
+          <v-icon :icon="pages[i].icon" size="21" />
+          <span class="bottomnav__label">{{ pages[i].title }}</span>
+        </v-btn>
+      </div>
+
+      <div class="bottomnav__gap" />
+
+      <div class="bottomnav__group">
+        <v-btn
+          v-for="i in navRight"
+          :key="i"
+          class="bottomnav__item"
+          :class="{ 'bottomnav__item--active': tab === i }"
+          :color="tab === i ? 'primary' : undefined"
+          variant="text"
+          stacked
+          :ripple="false"
+          @click="goTab(i)"
+        >
+          <v-icon :icon="pages[i].icon" size="21" />
+          <span class="bottomnav__label">{{ pages[i].title }}</span>
+        </v-btn>
+      </div>
+
+      <!-- 中央悬浮圆形搜索按钮 -->
       <v-btn
-        v-for="(t, i) in tabs"
-        :key="i"
-        class="bottomnav__item"
-        :class="{ 'bottomnav__item--active': tab === i }"
-        :color="tab === i ? 'primary' : undefined"
-        variant="text"
-        stacked
-        :ripple="false"
-        @click="goTab(i)"
+        class="bottomnav__fab"
+        :class="{ 'bottomnav__fab--active': tab === 0 }"
+        color="primary"
+        variant="flat"
+        icon
+        rounded="circle"
+        elevation="6"
+        title="搜索"
+        aria-label="搜索"
+        @click="openSearchPage"
       >
-        <v-icon :icon="t.icon" size="21" />
-        <span class="bottomnav__label">{{ t.title }}</span>
+        <v-icon icon="mdi-magnify" size="26" />
       </v-btn>
     </v-sheet>
   </div>
@@ -149,10 +209,11 @@ watch(
   transition: padding-bottom 0.18s ease;
 }
 
-/* ---------- 顶栏 ---------- */
+/* ---------- 顶栏（标题居中） ---------- */
 .topbar {
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 10px 16px;
   padding-top: calc(10px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
   padding-left: calc(16px + var(--safe-area-inset-left, env(safe-area-inset-left, 0px)));
@@ -165,6 +226,7 @@ watch(
 .topbar :deep(.v-toolbar__content) {
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 0;
 }
 
@@ -172,6 +234,7 @@ watch(
   font-size: 1.06rem;
   font-weight: 700;
   letter-spacing: -0.01em;
+  text-align: center;
   color: rgb(var(--v-theme-on-surface));
 }
 
@@ -223,6 +286,7 @@ z-swiper-item {
 
 /* ---------- 移动底部导航 ---------- */
 .bottomnav {
+  position: relative;
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
@@ -238,6 +302,17 @@ z-swiper-item {
   .bottomnav {
     display: none;
   }
+}
+
+.bottomnav__group {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 中央为悬浮按钮留出的空隙 */
+.bottomnav__gap {
+  flex: 0 0 72px;
 }
 
 .bottomnav__item {
@@ -256,5 +331,24 @@ z-swiper-item {
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+/* 悬浮圆形搜索按钮：压在内嵌页面与 tab 栏的交汇处 */
+.bottomnav__fab {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  transform: translateX(-50%);
+  width: 56px !important;
+  height: 56px !important;
+  min-width: 56px;
+  border-radius: 50%;
+  z-index: 3;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.bottomnav__fab--active {
+  outline: 2px solid rgba(var(--v-theme-primary), 0.25);
+  outline-offset: 2px;
 }
 </style>
