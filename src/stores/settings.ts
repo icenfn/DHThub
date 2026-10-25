@@ -8,6 +8,40 @@ import type { DnsServer, GithubMirror, SettingsExportFile } from '../types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
+/** 下载内核（rqbit）配置；数值 0 / 空 = 内核默认或不限速 */
+export interface DownloadConfig {
+  /** 启用 DHT（无 tracker 时找 peer） */
+  dhtEnabled: boolean
+  /** DHT 监听端口，0 = 随机 */
+  dhtPort: number
+  /** 下载限速 KB/s，0 = 不限 */
+  downloadLimitKbps: number
+  /** 上传限速 KB/s，0 = 不限 */
+  uploadLimitKbps: number
+  /** 每个任务的 peer 上限，0 = 内核默认 */
+  peerLimit: number
+  /** 并发初始化任务数，0 = 内核默认 */
+  concurrentInitLimit: number
+  /** 禁用 tracker 通信（纯 DHT 模式） */
+  disableTrackers: boolean
+  /** 仅使用 IPv4 */
+  ipv4Only: boolean
+  /** 追加到每个任务的 tracker 列表 */
+  extraTrackers: string[]
+}
+
+export const DEFAULT_DOWNLOAD_CONFIG: DownloadConfig = {
+  dhtEnabled: true,
+  dhtPort: 0,
+  downloadLimitKbps: 0,
+  uploadLimitKbps: 0,
+  peerLimit: 0,
+  concurrentInitLimit: 0,
+  disableTrackers: false,
+  ipv4Only: false,
+  extraTrackers: [],
+}
+
 export interface SettingsData {
   theme: ThemeMode
   subscribeUrl: string
@@ -24,6 +58,8 @@ export interface SettingsData {
   dnsServers: DnsServer[]
   /** 当前选中 DNS id（空 = 系统默认） */
   dnsId: string
+  /** 下载内核（rqbit）配置 */
+  downloadConfig: DownloadConfig
 }
 
 export const DEFAULT_SUBSCRIBE_URL =
@@ -55,6 +91,14 @@ const DEFAULTS: SettingsData = {
   autoCheckUpdate: true,
   dnsServers: BUILTIN_DNS.map((d) => ({ ...d })),
   dnsId: '',
+  downloadConfig: { ...DEFAULT_DOWNLOAD_CONFIG },
+}
+
+/** 数值字段合法性夹取：非法输入回退 min */
+function clampUint(v: unknown, min: number, max: number): number {
+  const n = typeof v === 'number' ? Math.round(v) : Number(v)
+  if (!Number.isFinite(n) || n < min) return min
+  return Math.min(n, max)
 }
 
 class SettingsStore {
@@ -175,6 +219,21 @@ class SettingsStore {
     if (merged.dnsId !== '' && !merged.dnsServers.some((d) => d.id === merged.dnsId)) {
       merged.dnsId = merged.dnsServers[0]?.id ?? ''
     }
+    // 下载内核配置：逐字段校验，非法值回退默认
+    const dc = incoming.downloadConfig
+    merged.downloadConfig = {
+      dhtEnabled: typeof dc?.dhtEnabled === 'boolean' ? dc.dhtEnabled : true,
+      dhtPort: clampUint(dc?.dhtPort, 0, 65535),
+      downloadLimitKbps: clampUint(dc?.downloadLimitKbps, 0, 1000000),
+      uploadLimitKbps: clampUint(dc?.uploadLimitKbps, 0, 1000000),
+      peerLimit: clampUint(dc?.peerLimit, 0, 10000),
+      concurrentInitLimit: clampUint(dc?.concurrentInitLimit, 0, 64),
+      disableTrackers: dc?.disableTrackers === true,
+      ipv4Only: dc?.ipv4Only === true,
+      extraTrackers: Array.isArray(dc?.extraTrackers)
+        ? dc.extraTrackers.filter((t): t is string => typeof t === 'string').slice(0, 100)
+        : [],
+    }
     return merged
   }
 
@@ -219,6 +278,17 @@ class SettingsStore {
 
   async clearSearchHistory() {
     this.data.searchHistory = []
+    await this.persist()
+  }
+
+  // ---------- 下载内核（rqbit）配置 ----------
+
+  getDownloadConfig(): DownloadConfig {
+    return { ...this.data.downloadConfig, extraTrackers: [...this.data.downloadConfig.extraTrackers] }
+  }
+
+  async saveDownloadConfig(cfg: DownloadConfig) {
+    this.data.downloadConfig = { ...cfg, extraTrackers: [...cfg.extraTrackers] }
     await this.persist()
   }
 

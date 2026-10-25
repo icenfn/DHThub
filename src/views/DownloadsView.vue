@@ -4,6 +4,7 @@
 // 数据：命令返回 librqbit 的 TorrentStats 原样 JSON，这里只做展示层取值。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke, isTauri } from '../lib/tauri'
+import { settings } from '../stores/settings'
 
 const emit = defineEmits<{ (e: 'go-sites'): void }>()
 
@@ -162,7 +163,32 @@ async function remove(row: DownloadRow) {
   }
 }
 
+/** 把设置页的下载内核配置下发给内核（未创建会话时生效于首次初始化） */
+async function pushConfig() {
+  if (!isTauri) return
+  try {
+    const c = settings.getDownloadConfig()
+    await invoke('configure_downloads', {
+      cfg: {
+        dht_enabled: c.dhtEnabled,
+        dht_port: c.dhtPort,
+        download_limit_kbps: c.downloadLimitKbps,
+        upload_limit_kbps: c.uploadLimitKbps,
+        peer_limit: c.peerLimit,
+        concurrent_init_limit: c.concurrentInitLimit,
+        disable_trackers: c.disableTrackers,
+        ipv4_only: c.ipv4Only,
+        extra_trackers: c.extraTrackers,
+      },
+    })
+  } catch {
+    // 配置下发失败不阻塞页面（添加任务时内核会用当前配置初始化并报错）
+  }
+}
+
 onMounted(async () => {
+  await settings.ready()
+  await pushConfig()
   await refresh(false)
   if (!isTauri) return
   // 轮询刷新进度：下载速度/进度都在内核侧计算，这里只做拉取

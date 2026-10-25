@@ -7,7 +7,7 @@ mod models;
 mod search;
 mod sites;
 
-use downloads::{DownloadManager, DownloadRow};
+use downloads::{DownloadConfig, DownloadManager, DownloadRow};
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
 use models::{SiteConfig, SiteOutcome, SiteTestResult};
 use sites::SiteStore;
@@ -39,8 +39,9 @@ impl AppState {
                 .timeout(Duration::from_secs(20))
                 .build()
                 .expect("构建 HTTP 客户端失败"),
-            // 下载文件默认放在应用数据目录下的 downloads/，避免占用系统临时目录
-            downloads: DownloadManager::new(app_data.join("downloads")),
+            // 下载文件默认放在应用数据目录下的 downloads/，避免占用系统临时目录；
+            // 内核状态文件（如 dht-state.json）放在应用数据目录根部
+            downloads: DownloadManager::new(app_data.join("downloads"), app_data.clone()),
             sites: SiteStore::new(app_data.clone()).await,
             history: HistoryStore::new(app_data).await,
         }
@@ -321,6 +322,21 @@ async fn clear_all_history(state: tauri::State<'_, AppState>) -> Result<(), Stri
 
 // ---------- 下载（BitTorrent / rqbit） ----------
 
+/// 更新下载内核配置；返回 true 表示会话已在运行，需 restart_download_session 后生效
+#[tauri::command]
+async fn configure_downloads(
+    state: tauri::State<'_, AppState>,
+    cfg: DownloadConfig,
+) -> Result<bool, String> {
+    Ok(state.downloads.configure(cfg).await)
+}
+
+/// 重启下载会话（丢弃当前任务列表），使新配置立即生效
+#[tauri::command]
+async fn restart_download_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.downloads.restart().await
+}
+
 /// 添加磁力链接下载，返回任务 id
 #[tauri::command]
 async fn add_download(state: tauri::State<'_, AppState>, magnet: String) -> Result<usize, String> {
@@ -401,7 +417,9 @@ pub fn run() {
             list_downloads,
             pause_download,
             resume_download,
-            remove_download
+            remove_download,
+            configure_downloads,
+            restart_download_session
         ])
         .run(tauri::generate_context!())
         .expect("DHThub 启动失败");
