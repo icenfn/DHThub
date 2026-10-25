@@ -213,6 +213,7 @@ impl DownloadManager {
         // 这一步是解决「解析超时」的关键：磁力自带的 tracker 往往已失效。
         let trackers: HashSet<url::Url> = DEFAULT_PUBLIC_TRACKERS
             .iter()
+            .copied()
             .chain(cfg.extra_trackers.iter().map(|t| t.as_str()))
             .filter_map(|t| t.trim().parse::<url::Url>().ok())
             .collect();
