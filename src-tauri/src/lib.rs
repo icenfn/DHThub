@@ -1,11 +1,13 @@
 //! DHThub Tauri 应用入口：插件注册、状态管理、命令路由
 
 mod dns;
+mod downloads;
 mod history;
 mod models;
 mod search;
 mod sites;
 
+use downloads::{DownloadManager, DownloadRow};
 use history::{HistoryStore, KIND_BROWSE, KIND_COPY, KIND_MAGNET};
 use models::{SiteConfig, SiteOutcome, SiteTestResult};
 use sites::SiteStore;
@@ -17,6 +19,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub sites: SiteStore,
     pub history: HistoryStore,
+    pub downloads: DownloadManager,
 }
 
 impl AppState {
@@ -36,6 +39,8 @@ impl AppState {
                 .timeout(Duration::from_secs(20))
                 .build()
                 .expect("构建 HTTP 客户端失败"),
+            // 下载文件默认放在应用数据目录下的 downloads/，避免占用系统临时目录
+            downloads: DownloadManager::new(app_data.join("downloads")),
             sites: SiteStore::new(app_data.clone()).await,
             history: HistoryStore::new(app_data).await,
         }
@@ -314,6 +319,42 @@ async fn clear_all_history(state: tauri::State<'_, AppState>) -> Result<(), Stri
     state.history.clear_all().await
 }
 
+// ---------- 下载（BitTorrent / rqbit） ----------
+
+/// 添加磁力链接下载，返回任务 id
+#[tauri::command]
+async fn add_download(state: tauri::State<'_, AppState>, magnet: String) -> Result<usize, String> {
+    state.downloads.add(magnet).await
+}
+
+/// 列出全部下载任务（含进度统计）
+#[tauri::command]
+async fn list_downloads(state: tauri::State<'_, AppState>) -> Result<Vec<DownloadRow>, String> {
+    state.downloads.list().await
+}
+
+/// 暂停下载任务
+#[tauri::command]
+async fn pause_download(state: tauri::State<'_, AppState>, id: usize) -> Result<(), String> {
+    state.downloads.pause(id).await
+}
+
+/// 继续（恢复）下载任务
+#[tauri::command]
+async fn resume_download(state: tauri::State<'_, AppState>, id: usize) -> Result<(), String> {
+    state.downloads.resume(id).await
+}
+
+/// 删除下载任务；delete_files 为 true 时同时删除已下载数据
+#[tauri::command]
+async fn remove_download(
+    state: tauri::State<'_, AppState>,
+    id: usize,
+    delete_files: bool,
+) -> Result<(), String> {
+    state.downloads.remove(id, delete_files).await
+}
+
 // ---------- 更新 ----------
 
 // 更新检测已在纯前端实现（src/lib/update.ts，plugin-http fetch releases/latest + snackbar），Rust 侧不再参与
@@ -355,7 +396,12 @@ pub fn run() {
             add_history,
             get_history,
             clear_history,
-            clear_all_history
+            clear_all_history,
+            add_download,
+            list_downloads,
+            pause_download,
+            resume_download,
+            remove_download
         ])
         .run(tauri::generate_context!())
         .expect("DHThub 启动失败");

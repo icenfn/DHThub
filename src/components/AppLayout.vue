@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 首页框架：顶栏（居中动态标题）+ 主体为 @zebra-ui/swiper 滑动窗口内嵌 5 页
-// （搜索 / 搜索源 / 历史 / 下载 / 设置），可左右滑动切换。
+// （搜索源 / 历史 / 搜索 / 下载 / 设置），可左右滑动切换。
 // 底部导航只放 4 个 tab（搜索源 / 历史 / 下载 / 设置），
-// 「搜索」页由底部导航正中央悬浮的圆形按钮进入。
+// 「搜索」页位于正中央，由底部导航中央悬浮的圆形按钮进入。
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ZSwiper, ZSwiperItem } from '@zebra-ui/swiper'
@@ -20,23 +20,25 @@ const route = useRoute()
 
 // 页面顺序即 swiper 下标，与底部导航/桌面分段的 index 一一对应
 const pages = [
-  { title: '搜索', icon: 'mdi-text-search' },
   { title: '搜索源', icon: 'mdi-antenna' },
   { title: '历史', icon: 'mdi-history' },
+  { title: '搜索', icon: 'mdi-text-search' },
   { title: '下载', icon: 'mdi-download-outline' },
   { title: '设置', icon: 'mdi-cog-outline' },
 ]
+/** 搜索页在 swiper 中的下标（底部中央悬浮按钮进入） */
+const SEARCH_INDEX = 2
 const titles = pages.map((p) => p.title)
 
-/** 底部导航左组 */
-const navLeft = [1, 2]
-/** 底部导航右组 */
+/** 底部导航左组：搜索源、历史 */
+const navLeft = [0, 1]
+/** 底部导航右组：下载、设置 */
 const navRight = [3, 4]
 
-const tab = ref(0)
+const tab = ref(SEARCH_INDEX)
 const swiperRef = ref<SwiperInterface | null>(null)
 
-const appTitle = computed(() => titles[tab.value] ?? titles[0])
+const appTitle = computed(() => titles[tab.value] ?? '搜索')
 
 // 键盘弹出时给主体让出键盘高度，输入区不会被输入法遮住
 const shellStyle = computed(() => ({
@@ -69,11 +71,11 @@ watch(
 )
 
 function openSearchPage() {
-  goTab(0)
+  goTab(SEARCH_INDEX)
 }
 
 function openSitesPage() {
-  goTab(1)
+  goTab(0)
 }
 </script>
 
@@ -112,17 +114,17 @@ function openSitesPage() {
       <z-swiper style="height: 100%" @swiper="onSwiper" @slide-change="onSlideChange">
         <z-swiper-item style="height: 100%">
           <div class="pane">
-            <HomeView />
-          </div>
-        </z-swiper-item>
-        <z-swiper-item style="height: 100%">
-          <div class="pane">
             <SitesView />
           </div>
         </z-swiper-item>
         <z-swiper-item style="height: 100%">
           <div class="pane">
             <HistoryView />
+          </div>
+        </z-swiper-item>
+        <z-swiper-item style="height: 100%">
+          <div class="pane">
+            <HomeView />
           </div>
         </z-swiper-item>
         <z-swiper-item style="height: 100%">
@@ -180,7 +182,7 @@ function openSitesPage() {
       <!-- 中央悬浮圆形搜索按钮 -->
       <v-btn
         class="bottomnav__fab"
-        :class="{ 'bottomnav__fab--active': tab === 0 }"
+        :class="{ 'bottomnav__fab--active': tab === SEARCH_INDEX }"
         color="primary"
         variant="flat"
         icon
